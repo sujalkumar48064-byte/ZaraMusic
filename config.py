@@ -14,6 +14,7 @@ BOT_TOKEN       = os.environ["BOT_TOKEN"]
 STRING_SESSION  = os.environ["STRING_SESSION"]
 MONGO_DB_URL    = os.environ["MONGO_DB_URL"]
 OWNER_ID        = int(os.environ["OWNER_ID"])
+OWNER_USERNAME  = os.getenv("OWNER_USERNAME", "duifioookn2")
 
 # ── Optional ──────────────────────────────────────────────────────────────────
 BOT_NAME         = os.getenv("BOT_NAME", "Zara Music")

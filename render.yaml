@@ -29,6 +29,9 @@ services:
       - key: LOGGER_ID
         sync: false
 
+      - key: OWNER_USERNAME
+        value: duifioookn2
+
       - key: API_URL
         sync: false
 

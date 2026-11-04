@@ -180,7 +180,7 @@ def start_private_kb(lang: Optional[dict] = None) -> str:
         )
         + _row(_tg_btn(_lbl(lang, "btn_help", "🏩 ʜᴇʟᴘ & ᴄᴏᴍᴍᴀɴᴅs 🏩"), "show_help", random_style()))
         + _row(
-            _url_btn(_lbl(lang, "btn_owner", "🫧 ᴏᴡɴᴇʀ 🫧"), f"tg://user?id={config.OWNER_ID}", random_style()),
+            _url_btn(_lbl(lang, "btn_owner", "🫧 ᴏᴡɴᴇʀ 🫧"), f"https://t.me/{config.OWNER_USERNAME}", random_style()),
         )
         + _row(_tg_btn(_lbl(lang, "btn_language", "🌐 ʟᴀɴɢᴜᴀɢᴇ"), "show_lang", random_style()))
     )
