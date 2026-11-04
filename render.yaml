@@ -62,6 +62,9 @@ services:
       - key: PING_IMG_URL
         value: https://raw.githubusercontent.com/sujalkumar48064-byte/ZaraMusic/main/Pic/IMG_20261104_125422.jpg
 
+      - key: KEEP_ALIVE_URL
+        value: https://zaramusic.onrender.com
+
       - key: PYTHON_VERSION
         value: 3.10.13
 

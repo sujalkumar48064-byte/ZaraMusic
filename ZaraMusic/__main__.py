@@ -46,14 +46,24 @@ def _run_flask() -> None:
 # ── Keep-Alive ────────────────────────────────────────────────────────────────
 
 def _keep_alive() -> None:
-    url = os.getenv("RENDER_EXTERNAL_URL", f"http://0.0.0.0:{config.PORT}")
+    url = (
+        os.getenv("KEEP_ALIVE_URL")
+        or os.getenv("RENDER_EXTERNAL_URL")
+        or "https://zaramusic.onrender.com"
+    ).rstrip("/")
+    if not url.endswith("/health"):
+        url += "/health"
+
     while True:
         try:
-            requests.get(url, timeout=10)
-            LOGGER.info(f"Keep-alive ping sent → {url}")
+            resp = requests.get(url, timeout=15)
+            if resp.status_code == 200:
+                LOGGER.info(f"Keep-alive OK → {url}")
+            else:
+                LOGGER.warning(f"Keep-alive status {resp.status_code} → {url}")
         except Exception as e:
             LOGGER.warning(f"Keep-alive ping failed: {e}")
-        time.sleep(300)
+        time.sleep(240)  # 4 minutes — Render sleeps after 15 min idle
 
 
 # ── Startup notification ──────────────────────────────────────────────────────
