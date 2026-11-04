@@ -63,7 +63,6 @@ async def ping_cmd(client, message: Message) -> None:
 
     caption = (
         rich_heading(lang["ping_title"].format(latency), level=3)
-        + (rich_img(config.PING_IMG_URL) if config.PING_IMG_URL else "")
         + rich_kv_table([
             (lang["kv_uptime"], f"<code>{uptime}</code>"),
             (lang["kv_ram"],    f"<code>{ram:.2f} MB</code>"),

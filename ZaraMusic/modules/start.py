@@ -25,7 +25,6 @@ from richgram import (
     rich_esc,
     rich_heading,
     rich_kv_table,
-    rich_img,
     rich_note,
     rich_send,
     rich_table,
@@ -63,7 +62,6 @@ async def start_handler(_, message: Message) -> None:
     chat_id   = message.chat.id
     chat_type = message.chat.type
     lang      = chat_strings(chat_id)
-    photo     = random.choice(config.START_PHOTOS) if config.START_PHOTOS else ""
 
     # ── Delete the user's /start command message ──────────────────────────────
     try:
@@ -80,7 +78,13 @@ async def start_handler(_, message: Message) -> None:
     # ── Private ───────────────────────────────────────────────────────────────
     if chat_type == ChatType.PRIVATE:
 
-        caption = (rich_img(photo) if photo else "") + _onboarding_body(lang, uid, name)
+        if config.START_PHOTOS:
+            try:
+                await bot.send_photo(chat_id, random.choice(config.START_PHOTOS))
+            except Exception:
+                pass
+
+        caption = _onboarding_body(lang, uid, name)
         kb = start_private_kb(lang)
 
         try:
@@ -119,8 +123,7 @@ async def start_handler(_, message: Message) -> None:
         mention = f'<a href="tg://user?id={uid}">{rich_esc(name)}</a>'
 
         caption = (
-            (rich_img(photo) if photo else "")
-            + f"<p>{lang['group_thanks_title'].format(mention, rich_esc(config.BOT_NAME))}</p>"
+            f"<p>{lang['group_thanks_title'].format(mention, rich_esc(config.BOT_NAME))}</p>"
             + rich_note(lang["group_thanks_note"].format(rich_esc(chat_title), rich_esc(name)))
             + support_updates_pills(lang)
         )
@@ -168,10 +171,8 @@ async def help_handler(_, message: Message) -> None:
         pass
 
     kb = help_menu_kb(lang)
-    photo = random.choice(config.START_PHOTOS) if config.START_PHOTOS else ""
     caption = (
-        (rich_img(photo) if photo else "")
-        + rich_heading(lang["help_pick_category_title"], level=3)
+        rich_heading(lang["help_pick_category_title"], level=3)
         + rich_note(lang["help_pick_category_note"].format(uid, rich_esc(name)))
         + rich_details(
                 lang["help_features_heading"],
