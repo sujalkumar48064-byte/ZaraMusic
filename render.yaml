@@ -1,0 +1,74 @@
+services:
+  - type: web
+    name: ZaraMusicBot
+    env: python
+    plan: free
+
+    buildCommand: "pip3 install --no-cache-dir --upgrade --requirement requirements.txt"
+    startCommand: "python main.py"
+
+    envVars:
+      - key: API_ID
+        sync: false
+
+      - key: API_HASH
+        sync: false
+
+      - key: BOT_TOKEN
+        sync: false
+
+      - key: STRING_SESSION
+        sync: false
+
+      - key: MONGO_DB_URL
+        sync: false
+
+      - key: OWNER_ID
+        sync: false
+
+      - key: LOGGER_ID
+        sync: false
+
+      - key: API_URL
+        sync: false
+
+      - key: API_KEY
+        sync: false
+
+      - key: USE_COOKIES
+        sync: false
+
+      - key: COOKIES_URL
+        sync: false
+
+      - key: BOT_NAME
+        sync: false
+
+      - key: BOT_LINK
+        sync: false
+
+      - key: UPDATES_CHANNEL
+        sync: false
+
+      - key: SUPPORT_GROUP
+        sync: false
+
+
+
+      - key: PYTHON_VERSION
+        value: 3.10.13
+
+      - key: SESSION_NAME
+        value: ZaraMusic
+
+      - key: PORT
+        value: "10000"
+
+      - key: MAX_DURATION_SECONDS
+        value: "1800"
+
+      - key: QUEUE_LIMIT
+        value: "20"
+
+      - key: COOLDOWN
+        value: "10"

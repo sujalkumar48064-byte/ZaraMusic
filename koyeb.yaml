@@ -1,0 +1,82 @@
+name: ZaraMusic
+
+services:
+  - name: zaramusic
+    type: worker
+
+    git:
+      repository: https://github.com/yourusername/ZaraMusic
+      branch: main
+
+    build:
+      buildpack: python
+
+    run:
+      command: python main.py
+
+    env:
+      - name: API_ID
+        value: ""
+
+      - name: API_HASH
+        value: ""
+
+      - name: BOT_TOKEN
+        value: ""
+
+      - name: STRING_SESSION
+        value: ""
+
+      - name: MONGO_DB_URL
+        value: ""
+
+      - name: OWNER_ID
+        value: ""
+
+      - name: LOGGER_ID
+        value: ""
+
+      - name: API_URL
+        value: ""
+
+      - name: API_KEY
+        value: ""
+
+      - name: USE_COOKIES
+        value: ""
+
+      - name: COOKIES_URL
+        value: ""
+
+      - name: BOT_NAME
+        value: ""
+
+      - name: BOT_LINK
+        value: ""
+
+      - name: UPDATES_CHANNEL
+        value: ""
+
+      - name: SUPPORT_GROUP
+        value: ""
+
+
+
+      - name: SESSION_NAME
+        value: "ZaraMusic"
+
+      - name: PORT
+        value: "10000"
+
+      - name: MAX_DURATION_SECONDS
+        value: "1800"
+
+      - name: QUEUE_LIMIT
+        value: "20"
+
+      - name: COOLDOWN
+        value: "10"
+
+    scaling:
+      min: 1
+      max: 1
