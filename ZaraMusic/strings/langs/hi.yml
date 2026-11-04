@@ -293,6 +293,7 @@ onboarding_features_rows:
 onboarding_features_headers: ["फ़ीचर", "विवरण"]
 onboarding_why_heading: "✧ इसे क्यों चुनें? ✧"
 onboarding_why_body: "<p>⭐ आसान स्लैश कमांड्स, कोई सेटअप नहीं चाहिए।</p><p>🎧 साफ़, कम-लैग स्ट्रीमिंग।</p><p>❍ सभी कमांड्स के लिए नीचे हेल्प पर क्लिक करें।</p>"
+onboarding_powered_by: "पावर्ड बाय » <a href='https://t.me/MEE_ZaRa_MUSIC_BOt'>ज़ारा-म्यूज़िक™</a>"
 
 # ── /start in a group ───────────────────────────────────────────────────────────
 group_thanks_title: "❍ नमस्ते {0}, यह है {1}"

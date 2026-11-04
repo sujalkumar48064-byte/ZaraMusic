@@ -24,6 +24,7 @@ from richgram import (
     rich_details,
     rich_esc,
     rich_heading,
+    rich_img,
     rich_kv_table,
     rich_note,
     rich_send,
@@ -48,6 +49,7 @@ def _onboarding_body(lang: dict, uid: int, name: str) -> str:
             lang["onboarding_why_body"],
             open=True,
         )
+        + rich_note(lang["onboarding_powered_by"])
         + support_updates_pills(lang)
     )
 
@@ -61,6 +63,7 @@ async def start_handler(_, message: Message) -> None:
     name      = sanitize_display_name(message.from_user.first_name)
     chat_id   = message.chat.id
     chat_type = message.chat.type
+    photo     = random.choice(config.START_PHOTOS)
     lang      = chat_strings(chat_id)
 
     # ── Delete the user's /start command message ──────────────────────────────
@@ -78,13 +81,7 @@ async def start_handler(_, message: Message) -> None:
     # ── Private ───────────────────────────────────────────────────────────────
     if chat_type == ChatType.PRIVATE:
 
-        if config.START_PHOTOS:
-            try:
-                await bot.send_photo(chat_id, random.choice(config.START_PHOTOS))
-            except Exception:
-                pass
-
-        caption = _onboarding_body(lang, uid, name)
+        caption = rich_img(photo) + _onboarding_body(lang, uid, name)
         kb = start_private_kb(lang)
 
         try:
@@ -123,7 +120,8 @@ async def start_handler(_, message: Message) -> None:
         mention = f'<a href="tg://user?id={uid}">{rich_esc(name)}</a>'
 
         caption = (
-            f"<p>{lang['group_thanks_title'].format(mention, rich_esc(config.BOT_NAME))}</p>"
+            rich_img(photo)
+            + f"<p>{lang['group_thanks_title'].format(mention, rich_esc(config.BOT_NAME))}</p>"
             + rich_note(lang["group_thanks_note"].format(rich_esc(chat_title), rich_esc(name)))
             + support_updates_pills(lang)
         )
@@ -171,14 +169,19 @@ async def help_handler(_, message: Message) -> None:
         pass
 
     kb = help_menu_kb(lang)
+
+    photo = random.choice(config.START_PHOTOS)
+
     caption = (
         rich_heading(lang["help_pick_category_title"], level=3)
+        + rich_img(photo)
         + rich_note(lang["help_pick_category_note"].format(uid, rich_esc(name)))
         + rich_details(
                 lang["help_features_heading"],
                 rich_table(lang["onboarding_features_headers"], lang["help_features_rows"]),
                 open=True,
             )
+        + rich_note(lang["onboarding_powered_by"])
         + support_updates_pills(lang)
     )
 

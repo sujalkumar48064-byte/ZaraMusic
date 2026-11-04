@@ -26,6 +26,7 @@ from richgram import (
     rich_details,
     rich_esc,
     rich_heading,
+    rich_img,
     rich_kv_table,
     rich_note,
     rich_send,
@@ -34,10 +35,14 @@ from richgram import (
     sanitize_display_name,
 )
 
-def _category_html(lang: dict, title: str, desc: str, rows) -> str:
-    """heading + description + Command/Description table + pills."""
+def _category_html(lang: dict, title: str, desc: str, rows, photo: str = None) -> str:
+    """title/desc/rows + photo -> photo + heading + description + Command/Description table + pills."""
+    html = ""
+    if photo:
+        html += rich_img(photo)
     return (
-        rich_heading(title, level=3)
+        html
+        + rich_heading(title, level=3)
         + f"<p>{desc}</p>"
         + rich_table([lang["kv_command"], lang["kv_description"]], rows)
         + support_updates_pills(lang)
@@ -73,6 +78,7 @@ def _onboarding_body(lang: dict, uid: int, name: str) -> str:
             lang["onboarding_why_body"],
             open=True,
         )
+        + rich_note(lang["onboarding_powered_by"])
         + support_updates_pills(lang)
     )
 
@@ -283,14 +289,17 @@ async def on_callback(client, cbq: CallbackQuery) -> None:
         await cbq.answer()
         uid  = cbq.from_user.id
         name = sanitize_display_name(cbq.from_user.first_name)
+        photo = random.choice(config.START_PHOTOS)
         content = (
             rich_heading(lang["help_pick_category_title"], level=3)
+            + rich_img(photo)
             + rich_note(lang["help_pick_category_note"].format(uid, rich_esc(name)))
             + rich_details(
                     lang["help_features_heading"],
                     rich_table(lang["onboarding_features_headers"], lang["help_features_rows"]),
                     open=True,
                 )
+            + rich_note(lang["onboarding_powered_by"])
             + support_updates_pills(lang)
         )
         kb = help_menu_home_kb(lang)
@@ -310,6 +319,7 @@ async def on_callback(client, cbq: CallbackQuery) -> None:
 
     elif data.startswith("help_"):
         await cbq.answer()
+        photo = random.choice(config.START_PHOTOS)
         help_data = lang["help_categories"].get(data)
         if help_data:
             rows = list(help_data["rows"])
@@ -322,7 +332,7 @@ async def on_callback(client, cbq: CallbackQuery) -> None:
                      lang["help_play_queue_limit_val"].format(config.QUEUE_LIMIT)),
                     tuple(lang["help_thumbnail_row"]),
                 ]
-            text = _category_html(lang, help_data["title"], help_data["desc"], rows)
+            text = _category_html(lang, help_data["title"], help_data["desc"], rows, photo)
             await rich_edit(cbq.message, text + help_back_kb(lang))
 
 
@@ -332,7 +342,9 @@ async def _go_back(cbq: CallbackQuery, lang: dict) -> None:
     await cbq.answer()
     uid  = cbq.from_user.id
     name = sanitize_display_name(cbq.from_user.first_name)
-    caption = _onboarding_body(lang, uid, name)
+    photo = random.choice(config.START_PHOTOS)
+
+    caption = rich_img(photo) + _onboarding_body(lang, uid, name)
     kb = start_private_kb(lang)
 
     chat_id = cbq.message.chat.id

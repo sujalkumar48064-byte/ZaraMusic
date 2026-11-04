@@ -21,6 +21,7 @@ BOT_LINK         = os.getenv("BOT_LINK", "https://t.me/ZaraMusicBot")
 UPDATES_CHANNEL  = os.getenv("UPDATES_CHANNEL", "https://t.me/your_updates_channel")
 SUPPORT_GROUP    = os.getenv("SUPPORT_GROUP", "https://t.me/your_support_group")
 LOGGER_ID        = int(os.getenv("LOGGER_ID", "0"))
+PING_IMG_URL     = os.getenv("PING_IMG_URL", "https://raw.githubusercontent.com/sujalkumar48064-byte/ZaraMusic/main/Pic/IMG_20261104_125422.jpg")
 SESSION_NAME     = os.getenv("SESSION_NAME", "ZaraMusic")
 PORT             = int(os.getenv("PORT", 10000))
 
@@ -61,23 +62,12 @@ YT_STREAM_TIMEOUT = 900   # 15 min  — download / stream long songs
 #    "sexy": float(os.getenv("NSFW_THRESHOLD_SEXY", "0.8")),
 #}
 
-# ── Start / ping images (served from ./Pic by the health server) ───────────────
-PIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Pic")
-
-
-def _pic_urls() -> list[str]:
-    base = (os.getenv("START_PHOTO_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").strip().rstrip("/")
-    env_urls = [u.strip() for u in os.getenv("START_PHOTOS", "").split(",") if u.strip()]
-    if env_urls:
-        return env_urls
-    if not base or not os.path.isdir(PIC_DIR):
-        return []
-    names = sorted(n for n in os.listdir(PIC_DIR) if n.lower().endswith((".jpg", ".jpeg", ".png", ".webp")))
-    return [f"{base}/pic/{n}" for n in names]
-
-
-START_PHOTOS = _pic_urls()
-PING_IMG_URL = os.getenv("PING_IMG_URL", START_PHOTOS[0] if START_PHOTOS else "")
+#── Start ───────────────────────────────────────────────────────────────────────
+START_PHOTOS = [
+    "https://raw.githubusercontent.com/sujalkumar48064-byte/ZaraMusic/main/Pic/IMG_20261104_125422.jpg",
+    "https://raw.githubusercontent.com/sujalkumar48064-byte/ZaraMusic/main/Pic/IMG_20261104_125445.jpg",
+    "https://raw.githubusercontent.com/sujalkumar48064-byte/ZaraMusic/main/Pic/IMG_20261104_125510.jpg",
+]
 
 # ── Limits ────────────────────────────────────────────────────────────────────
 MAX_DURATION_SECONDS = 1800   # 30 minutes

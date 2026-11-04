@@ -20,10 +20,17 @@ from ZaraMusic.utils.logs import logger_active
 from richgram import (
     rich_esc,
     rich_heading,
+    rich_img,
     rich_kv_table,
     rich_note,
     rich_send,
 )
+
+LEFT_PHOTOS = [
+    "https://raw.githubusercontent.com/sujalkumar48064-byte/ZaraMusic/main/Pic/IMG_20261104_125422.jpg",
+    "https://raw.githubusercontent.com/sujalkumar48064-byte/ZaraMusic/main/Pic/IMG_20261104_125445.jpg",
+    "https://raw.githubusercontent.com/sujalkumar48064-byte/ZaraMusic/main/Pic/IMG_20261104_125510.jpg",
+]
 
 
 # ── Bot added to group ─────────────────────────────────────────────────────────
@@ -150,6 +157,7 @@ async def bot_left_watcher(_, message: Message) -> None:
 
         content = (
             rich_heading(en["logger_leftgroup_title"], level=3)
+            + rich_img(random.choice(LEFT_PHOTOS))
             + rich_kv_table([
                 (en["kv_chat_title"], rich_esc(chat.title)),
                 (en["kv_chat_id"], f"<code>{chat_id}</code>"),

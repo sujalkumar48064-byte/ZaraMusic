@@ -293,6 +293,7 @@ onboarding_features_rows:
 onboarding_features_headers: ["ਫੀਚਰ", "ਵੇਰਵਾ"]
 onboarding_why_heading: "✧ ਇਹ ਕਿਉਂ ਚੁਣੋ? ✧"
 onboarding_why_body: "<p>⭐ ਆਸਾਨ ਸਲੈਸ਼ ਕਮਾਂਡਸ, ਕੋਈ ਸੈੱਟਅੱਪ ਦੀ ਲੋੜ ਨਹੀਂ।</p><p>🎧 ਸਾਫ਼, ਘੱਟ-ਲੈਗ ਸਟ੍ਰੀਮਿੰਗ।</p><p>❍ ਸਾਰੀਆਂ ਕਮਾਂਡਾਂ ਲਈ ਹੇਠਾਂ ਹੈਲਪ ‘ਤੇ ਕਲਿੱਕ ਕਰੋ।</p>"
+onboarding_powered_by: "ਪਾਵਰਡ ਬਾਏ » <a href='https://t.me/MEE_ZaRa_MUSIC_BOt'>ਜ਼ਾਰਾ-ਮਿਊਜ਼ਿਕ™</a>"
 
 # ── /start in a group ───────────────────────────────────────────────────────────
 group_thanks_title: "❍ ਸਤ ਸ੍ਰੀ ਅਕਾਲ {0}, ਇਹ ਹੈ {1}"

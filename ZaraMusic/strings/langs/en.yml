@@ -292,6 +292,7 @@ onboarding_features_rows:
 onboarding_features_headers: ["ғᴇᴀᴛᴜʀᴇ", "ᴅᴇᴛᴀɪʟs"]
 onboarding_why_heading: "✧ ᴡʜʏ ᴄʜᴏᴏsᴇ ɪᴛ? ✧"
 onboarding_why_body: "<p>⭐ sɪᴍᴘʟᴇ sʟᴀsʜ ᴄᴏᴍᴍᴀɴᴅs, ɴᴏ sᴇᴛᴜᴘ ɴᴇᴇᴅᴇᴅ.</p><p>🎧 ᴄʟᴇᴀɴ, ʟᴏᴡ-ʟᴀɢ sᴛʀᴇᴀᴍɪɴɢ.</p><p>❍ ᴄʟɪᴄᴋ ʜᴇʟᴘ ʙᴇʟᴏᴡ ғᴏʀ ᴀʟʟ ᴄᴏᴍᴍᴀɴᴅs.</p>"
+onboarding_powered_by: "ᴘᴏᴡᴇʀᴇᴅ ʙʏ » <a href='https://t.me/MEE_ZaRa_MUSIC_BOt'>ᴢᴀʀᴀ-ᴍᴜsɪᴄ™</a>"
 
 # ── /start in a group ───────────────────────────────────────────────────────────
 group_thanks_title: "❍ ʜᴇʏ {0}, ᴛʜɪs ɪs {1}"
