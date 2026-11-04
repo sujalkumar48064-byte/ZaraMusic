@@ -7,7 +7,7 @@ import threading
 import time
 
 import requests
-from flask import Flask
+from flask import Flask, send_from_directory
 from pyrogram import idle
 from pyrogram.types import BotCommand
 
@@ -37,6 +37,11 @@ def _home():
 @_flask.route("/health")
 def _health():
     return "OK", 200
+
+
+@_flask.route("/pic/<path:filename>")
+def _pic(filename):
+    return send_from_directory(config.PIC_DIR, filename)
 
 
 def _run_flask() -> None:

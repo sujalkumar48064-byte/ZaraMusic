@@ -61,6 +61,24 @@ YT_STREAM_TIMEOUT = 900   # 15 min  — download / stream long songs
 #    "sexy": float(os.getenv("NSFW_THRESHOLD_SEXY", "0.8")),
 #}
 
+# ── Start / ping images (served from ./Pic by the health server) ───────────────
+PIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Pic")
+
+
+def _pic_urls() -> list[str]:
+    base = (os.getenv("START_PHOTO_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").strip().rstrip("/")
+    env_urls = [u.strip() for u in os.getenv("START_PHOTOS", "").split(",") if u.strip()]
+    if env_urls:
+        return env_urls
+    if not base or not os.path.isdir(PIC_DIR):
+        return []
+    names = sorted(n for n in os.listdir(PIC_DIR) if n.lower().endswith((".jpg", ".jpeg", ".png", ".webp")))
+    return [f"{base}/pic/{n}" for n in names]
+
+
+START_PHOTOS = _pic_urls()
+PING_IMG_URL = os.getenv("PING_IMG_URL", START_PHOTOS[0] if START_PHOTOS else "")
+
 # ── Limits ────────────────────────────────────────────────────────────────────
 MAX_DURATION_SECONDS = 1800   # 30 minutes
 QUEUE_LIMIT          = 20

@@ -20,6 +20,7 @@ from ZaraMusic.utils.logs import logger_active
 from richgram import (
     rich_esc,
     rich_heading,
+    rich_img,
     rich_kv_table,
     rich_note,
     rich_send,
@@ -149,7 +150,8 @@ async def bot_left_watcher(_, message: Message) -> None:
             return
 
         content = (
-            rich_heading(en["logger_leftgroup_title"], level=3)
+            (rich_img(random.choice(config.START_PHOTOS)) if config.START_PHOTOS else "")
+            + rich_heading(en["logger_leftgroup_title"], level=3)
             + rich_kv_table([
                 (en["kv_chat_title"], rich_esc(chat.title)),
                 (en["kv_chat_id"], f"<code>{chat_id}</code>"),
