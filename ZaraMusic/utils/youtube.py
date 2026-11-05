@@ -120,7 +120,7 @@ async def save_cookies() -> int:
 # ═════════════════════════════════════════════════════════════════════════════
 
 def _cached(video_id: str, video: bool) -> Optional[str]:
-    for ext in (("mp4", "webm") if video else ("mp3", "webm", "m4a")):
+    for ext in (("mp4", "webm") if video else ("m4a", "mp3", "webm")):
         path = os.path.join(DOWNLOAD_DIR, f"{video_id}.{ext}")
         if os.path.exists(path) and os.path.getsize(path) > 0:
             return path
@@ -197,12 +197,15 @@ def _pick_audio(data: dict):
     ]
     if not formats:
         return None
+    # Prefer m4a/AAC: it is directly playable and avoids slow re-encoding.
+    m4a = [f for f in formats if "mp4" in (f.get("container") or f.get("type") or "")]
     webm = [f for f in formats if "webm" in (f.get("container") or f.get("type") or "")]
-    best = max(webm or formats, key=_bitrate)
+    best = max(m4a or webm or formats, key=_bitrate)
     url = best.get("url")
     if not url:
         return None
-    ext = ".webm" if "webm" in (best.get("container") or best.get("type") or "") else ".m4a"
+    kind = best.get("container") or best.get("type") or ""
+    ext = ".m4a" if "mp4" in kind else ".webm" if "webm" in kind else ".m4a"
     return url, ext
 
 
@@ -582,7 +585,7 @@ async def _download(link: str, video: bool) -> Optional[str]:
 
 
 async def _to_mp3(path: str) -> str:
-    if not path or path.endswith(".mp3"):
+    if not path or path.endswith((".mp3", ".m4a")):
         return path
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
@@ -592,8 +595,9 @@ async def _to_mp3(path: str) -> str:
         return out
     tmp = out + ".part.mp3"
     cmd = [
-        ffmpeg, "-y", "-loglevel", "error", "-i", path,
-        "-vn", "-acodec", "libmp3lame", "-b:a", "192k", "-f", "mp3", tmp,
+        ffmpeg, "-y", "-loglevel", "error", "-threads", "0", "-i", path,
+        "-vn", "-acodec", "libmp3lame", "-b:a", "128k",
+        "-compression_level", "0", "-f", "mp3", tmp,
     ]
     proc = None
     try:
