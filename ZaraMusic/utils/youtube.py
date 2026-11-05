@@ -268,7 +268,7 @@ async def _download_url(session, url: str, path: str, attempts: int = 2) -> Opti
     for attempt in range(1, attempts + 1):
         try:
             async with session.get(
-                url, timeout=aiohttp.ClientTimeout(total=YT_STREAM_TIMEOUT)
+                url, timeout=aiohttp.ClientTimeout(total=min(YT_STREAM_TIMEOUT, 120))
             ) as resp:
                 if resp.status != 200:
                     logger.warning(f"[free] HTTP {resp.status} (attempt {attempt}/{attempts})")
@@ -683,6 +683,25 @@ async def resolve_video_stream(url: str) -> str:
 # PUBLIC — YOUTUBE SEARCH / METADATA
 # ═════════════════════════════════════════════════════════════════════════════
 
+async def _video_meta(video_id: str):
+    try:
+        async with aiohttp.ClientSession() as session:
+            data = await _fetch_invidious(session, video_id)
+        if not data:
+            return None
+        thumbs = data.get("videoThumbnails") or []
+        thumb = thumbs[0].get("url", "").split("?")[0] if thumbs else ""
+        return (
+            f"https://www.youtube.com/watch?v={video_id}",
+            data.get("title", "Unknown"),
+            sec_to_iso(int(data.get("lengthSeconds") or 0)),
+            thumb,
+        )
+    except Exception as e:
+        logger.warning(f"[invidious] meta {video_id}: {e}")
+        return None
+
+
 async def _search_invidious(query: str):
     """Fallback search through Invidious when py-yt-search fails."""
     if not INVIDIOUS_APIS:
@@ -759,6 +778,18 @@ async def search_yt(query: str):
                 "thumbnail": thumb,
             })
         return {"playlist": items}
+
+    # ── Direct YouTube link / video id ─────────────────────────────────────────
+    direct_id = None
+    if "youtube.com/watch" in query or "youtu.be/" in query:
+        direct_id = _extract_video_id(query)
+    elif re.fullmatch(r"[A-Za-z0-9_-]{11}", query.strip()):
+        direct_id = query.strip()
+
+    if direct_id:
+        meta = await _video_meta(direct_id)
+        if meta:
+            return meta
 
     # ── Single video search ───────────────────────────────────────────────────
     try:

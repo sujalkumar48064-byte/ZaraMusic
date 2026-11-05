@@ -172,6 +172,15 @@ async def _ensure_assistant_admin(chat_id: int) -> bool:
         LOGGER.warning(f"[VC] assistant identity failed: {e}")
         return False
 
+    try:
+        bot_member = await bot.get_chat_member(chat_id, "me")
+        bot_status = str(getattr(bot_member, "status", "")).lower()
+        if bot_status not in ("administrator", "creator", "owner"):
+            LOGGER.info(f"[VC] Bot is not admin in {chat_id}; cannot promote assistant")
+            return False
+    except Exception:
+        pass
+
     async def _lookup_member():
         try:
             return await bot.get_chat_member(chat_id, aid)
@@ -399,6 +408,22 @@ async def play_song(
 
     played = False
 
+    # Ensure the voice chat exists before asking PyTgCalls to play.
+    # This avoids a long hang when the assistant has no VC-admin rights.
+    try:
+        active_calls = await call_py.calls
+    except Exception:
+        active_calls = {}
+
+    if chat_id not in active_calls:
+        LOGGER.info(f"[VC] Not connected — ensuring VC for {chat_id}")
+        if not await _ensure_vc(chat_id, message):
+            try:
+                remove_from_queue(chat_id, 0)
+            except Exception:
+                pass
+            return
+
     for attempt in range(2):
 
         try:
@@ -420,14 +445,14 @@ async def play_song(
                 f"[PLAY] {chat_id}: calling play "
                 f"({'video' if is_video else 'audio'})"
             )
-            await asyncio.wait_for(call_py.play(chat_id, stream), timeout=75)
+            await asyncio.wait_for(call_py.play(chat_id, stream), timeout=45)
             LOGGER.info(f"[PLAY] {chat_id}: play returned")
 
             played = True
             break
 
         except asyncio.TimeoutError:
-            LOGGER.error(f"[PLAY] {chat_id}: play() timed out after 75s")
+            LOGGER.error(f"[PLAY] {chat_id}: play() timed out after 45s")
 
             try:
                 remove_from_queue(chat_id, 0)
