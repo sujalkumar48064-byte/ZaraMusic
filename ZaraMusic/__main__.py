@@ -69,7 +69,7 @@ def _keep_alive() -> None:
 # ── Startup notification ──────────────────────────────────────────────────────
 
 
-async def _notify_owner(me, assistant_username: str) -> None:
+async def _notify_owner(me, assistant_username: str, assistant_id: int = 0) -> None:
     if not logger_active():
         return
 
@@ -86,7 +86,8 @@ async def _notify_owner(me, assistant_username: str) -> None:
                 ),
                 (
                     "ᴀꜱꜱɪꜱᴛᴀɴᴛ",
-                    f"@{rich_esc(assistant_username)}"
+                    f"@{rich_esc(assistant_username or 'N/A')} "
+                    f"<code>{assistant_id}</code>"
                 ),
             ])
         )
@@ -191,7 +192,8 @@ if __name__ == "__main__":
             assistant.start()
         am = assistant.get_me()
         ASSISTANT_USERNAME = am.username or ""
-        LOGGER.info(f"Assistant: @{ASSISTANT_USERNAME}")
+        ASSISTANT_ID = am.id
+        LOGGER.info(f"Assistant: @{ASSISTANT_USERNAME or 'N/A'} (id {ASSISTANT_ID})")
     except Exception as e:
         LOGGER.error(f"Assistant start failed: {e}")
         sys.exit(1)
@@ -227,7 +229,7 @@ if __name__ == "__main__":
     if config.USE_COOKIES and config.COOKIES_URL:
         from ZaraMusic.utils.youtube import save_cookies
         loop.run_until_complete(save_cookies())
-    loop.run_until_complete(_notify_owner(me, ASSISTANT_USERNAME))
+    loop.run_until_complete(_notify_owner(me, ASSISTANT_USERNAME, ASSISTANT_ID))
 
     # 12. Watchdog
     from ZaraMusic.core.watcher import watchdog

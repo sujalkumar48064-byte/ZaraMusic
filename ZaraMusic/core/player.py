@@ -147,59 +147,75 @@ async def _update_progress(
 # AUTO START VC
 # ─────────────────────────────────────────────
 
-async def _ensure_vc(chat_id: int) -> bool:
+async def _fail_status(chat_id: int, status_message, content: str) -> None:
 
-    lang = chat_strings(chat_id)
+    if status_message is not None:
+        try:
+            await rich_edit(status_message, content)
+            return
+        except Exception:
+            pass
 
     try:
+        await rich_send(bot, chat_id, content)
+    except Exception:
+        pass
 
-        chat_id = int(chat_id)
-        chat = await assistant.get_chat(chat_id)
 
-        await assistant.invoke(
-            CreateGroupCall(
-                peer=await assistant.resolve_peer(chat.id),
-                random_id=random.randint(10000, 99999),
+async def _ensure_vc(chat_id: int, status_message=None) -> bool:
+
+    lang = chat_strings(chat_id)
+    chat_id = int(chat_id)
+    last_err = None
+
+    # Try the assistant first, then the bot (whichever is admin can start the VC).
+    for client, label in ((assistant, "assistant"), (bot, "bot")):
+
+        try:
+
+            chat = await client.get_chat(chat_id)
+
+            await client.invoke(
+                CreateGroupCall(
+                    peer=await client.resolve_peer(chat.id),
+                    random_id=random.randint(10000, 99999),
+                )
             )
-        )
 
-        LOGGER.info(f"[VC] Created in {chat_id}")
-        await asyncio.sleep(2)
-        return True
-
-    except TelegramServerError as e:
-        LOGGER.error(f"[VC] TelegramServerError: {e}")
-        await rich_send(
-            bot, chat_id,
-            rich_heading(lang["vc_start_failed_server_title"], level=3)
-            + rich_note(f"<code>{rich_esc(e)}</code>"),
-        )
-        return False
-
-    except Exception as e:
-
-        err = str(e).lower()
-
-        # already active
-        if "already" in err or "groupcall_already_started" in err:
+            LOGGER.info(f"[VC] Created in {chat_id} via {label}")
+            await asyncio.sleep(2)
             return True
 
-        # admin rights missing
-        if "chat_admin_required" in err or "admin" in err:
-            await rich_send(
-                bot, chat_id,
-                rich_heading(lang["vc_perm_missing_title"], level=3)
-                + rich_note(lang["vc_perm_missing_note"]),
-            )
-            return False
+        except Exception as e:
 
-        LOGGER.error(f"[VC ERROR] {e}")
-        await rich_send(
-            bot, chat_id,
-            rich_heading(lang["vc_start_failed_title"], level=3)
-            + rich_note(f"<code>{rich_esc(e)}</code>"),
+            err = str(e).lower()
+
+            # already active
+            if "already" in err or "groupcall_already_started" in err:
+                LOGGER.info(f"[VC] Already active in {chat_id} ({label})")
+                return True
+
+            last_err = e
+            LOGGER.warning(f"[VC] {label} create failed: {e}")
+
+    err = str(last_err or "").lower()
+
+    if "chat_admin_required" in err or "admin" in err:
+        await _fail_status(
+            chat_id,
+            status_message,
+            rich_heading(lang["vc_perm_missing_title"], level=3)
+            + rich_note(lang["vc_perm_missing_note"]),
         )
         return False
+
+    await _fail_status(
+        chat_id,
+        status_message,
+        rich_heading(lang["vc_start_failed_title"], level=3)
+        + rich_note(f"<code>{rich_esc(last_err)}</code>"),
+    )
+    return False
 
 
 # ─────────────────────────────────────────────
@@ -230,6 +246,18 @@ async def play_song(
     except Exception:
         message = await rich_send(bot, chat_id, loading_text)
 
+    async def _fail(content: str) -> None:
+        if message is not None:
+            try:
+                await rich_edit(message, content)
+                return
+            except Exception:
+                pass
+        try:
+            await rich_send(bot, chat_id, content)
+        except Exception:
+            pass
+
     # ─────────────────────────────────────────
     # RESOLVE STREAM
     # ─────────────────────────────────────────
@@ -248,8 +276,7 @@ async def play_song(
         except Exception:
             pass
 
-        await rich_send(
-            bot, chat_id,
+        await _fail(
             rich_heading(lang["download_failed_title"], level=3)
             + rich_note(f"<code>{rich_esc(e)}</code>"),
         )
@@ -317,8 +344,7 @@ async def play_song(
             except Exception:
                 pass
 
-            await rich_send(
-                bot, chat_id,
+            await _fail(
                 rich_heading(lang["effects_playback_failed_title"], level=3)
                 + rich_note("Playback timed out. Please try again."),
             )
@@ -328,7 +354,7 @@ async def play_song(
 
             if attempt == 0:
                 LOGGER.info(f"[VC] NoActiveGroupCall — Creating VC in {chat_id}")
-                ok = await _ensure_vc(chat_id)
+                ok = await _ensure_vc(chat_id, message)
 
                 if ok:
                     continue
@@ -348,8 +374,7 @@ async def play_song(
             except Exception:
                 pass
 
-            await rich_send(
-                bot, chat_id,
+            await _fail(
                 rich_heading(lang["playback_failed_server_title"], level=3)
                 + rich_note(f"<code>{rich_esc(e)}</code>"),
             )
@@ -373,7 +398,7 @@ async def play_song(
             # auto create vc (string-based fallback)
             if vc_missing and attempt == 0:
                 LOGGER.info(f"[VC] Creating VC in {chat_id}")
-                ok = await _ensure_vc(chat_id)
+                ok = await _ensure_vc(chat_id, message)
 
                 if ok:
                     continue
@@ -385,15 +410,21 @@ async def play_song(
 
                 return
 
-            # admin permission error
+            # admin permission error — try creating the VC with the other client
             if "chat_admin_required" in err or "admin" in err:
+                if attempt == 0:
+                    LOGGER.info(f"[VC] Admin required — trying VC create in {chat_id}")
+                    ok = await _ensure_vc(chat_id, message)
+
+                    if ok:
+                        continue
+
                 try:
                     remove_from_queue(chat_id, 0)
                 except Exception:
                     pass
 
-                await rich_send(
-                    bot, chat_id,
+                await _fail(
                     rich_heading(lang["vc_perm_missing_title"], level=3)
                     + rich_note(lang["playback_perm_missing_note"]),
                 )
@@ -406,8 +437,7 @@ async def play_song(
             except Exception:
                 pass
 
-            await rich_send(
-                bot, chat_id,
+            await _fail(
                 rich_heading(lang["effects_playback_failed_title"], level=3)
                 + rich_note(f"<code>{rich_esc(e)}</code>"),
             )
