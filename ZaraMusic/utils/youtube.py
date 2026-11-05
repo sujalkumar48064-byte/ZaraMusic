@@ -581,9 +581,51 @@ async def _download(link: str, video: bool) -> Optional[str]:
     return None
 
 
+async def _to_mp3(path: str) -> str:
+    if not path or path.endswith(".mp3"):
+        return path
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return path
+    out = os.path.splitext(path)[0] + ".mp3"
+    if os.path.exists(out) and os.path.getsize(out) > 0:
+        return out
+    tmp = out + ".part.mp3"
+    cmd = [
+        ffmpeg, "-y", "-loglevel", "error", "-i", path,
+        "-vn", "-acodec", "libmp3lame", "-b:a", "192k", "-f", "mp3", tmp,
+    ]
+    proc = None
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=120)
+        if proc.returncode != 0 or not os.path.exists(tmp) or os.path.getsize(tmp) < 1024:
+            tail = (err or b"").decode(errors="ignore")[-200:]
+            logger.warning(f"[audio] mp3 convert failed: {tail}")
+            _cleanup(tmp)
+            return path
+        os.replace(tmp, out)
+        _cleanup(path)
+        logger.info(f"[audio] Converted to mp3: {out}")
+        return out
+    except Exception as e:
+        logger.warning(f"[audio] mp3 convert error: {e}")
+        if proc and proc.returncode is None:
+            proc.kill()
+        _cleanup(tmp)
+        return path
+
+
 async def download_song(link: str) -> Optional[str]:
     """Download audio. Returns local file path or None on failure."""
-    return await _download(link, video=False)
+    path = await _download(link, video=False)
+    if path:
+        path = await _to_mp3(path)
+    return path
 
 
 async def download_video(link: str) -> Optional[str]:

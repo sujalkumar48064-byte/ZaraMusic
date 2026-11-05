@@ -1,4 +1,5 @@
 import asyncio
+import os
 import random
 import time
 
@@ -254,6 +255,15 @@ async def play_song(
         )
         return
 
+    try:
+        size = os.path.getsize(media_path)
+    except OSError:
+        size = 0
+    LOGGER.info(
+        f"[PLAY] {chat_id}: resolved {'video' if is_video else 'audio'} "
+        f"{media_path} ({size} bytes)"
+    )
+
     # ─────────────────────────────────────────
     # AUTO EFFECTS
     # ─────────────────────────────────────────
@@ -277,26 +287,42 @@ async def play_song(
         try:
 
             if is_video:
-                await call_py.play(
-                    chat_id,
-                    MediaStream(
-                        media_path,
-                        audio_parameters=AudioQuality.HIGH,
-                        video_parameters=VideoQuality.HD_720p,
-                    ),
+                stream = MediaStream(
+                    media_path,
+                    audio_parameters=AudioQuality.HIGH,
+                    video_parameters=VideoQuality.HD_720p,
                 )
             else:
-                await call_py.play(
-                    chat_id,
-                    MediaStream(
-                        media_path,
-                        audio_parameters=AudioQuality.HIGH,
-                        video_flags=MediaStream.Flags.IGNORE,
-                    ),
+                stream = MediaStream(
+                    media_path,
+                    audio_parameters=AudioQuality.HIGH,
+                    video_flags=MediaStream.Flags.IGNORE,
                 )
+
+            LOGGER.info(
+                f"[PLAY] {chat_id}: calling play "
+                f"({'video' if is_video else 'audio'})"
+            )
+            await asyncio.wait_for(call_py.play(chat_id, stream), timeout=75)
+            LOGGER.info(f"[PLAY] {chat_id}: play returned")
 
             played = True
             break
+
+        except asyncio.TimeoutError:
+            LOGGER.error(f"[PLAY] {chat_id}: play() timed out after 75s")
+
+            try:
+                remove_from_queue(chat_id, 0)
+            except Exception:
+                pass
+
+            await rich_send(
+                bot, chat_id,
+                rich_heading(lang["effects_playback_failed_title"], level=3)
+                + rich_note("Playback timed out. Please try again."),
+            )
+            return
 
         except NoActiveGroupCall:
 
@@ -445,6 +471,7 @@ async def play_song(
     _panel_content[(chat_id, pmsg.id)] = content
     # channel play: the panel lives in the group but its buttons drive the channel VC
     register_panel(pmsg.chat.id, pmsg.id, chat_id)
+    LOGGER.info(f"[PLAY] {chat_id}: panel updated")
 
     asyncio.create_task(
         _update_progress(
