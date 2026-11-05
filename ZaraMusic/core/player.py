@@ -5,7 +5,7 @@ import time
 
 from pyrogram.enums import ParseMode
 from pyrogram.raw.functions.phone import CreateGroupCall
-from pyrogram.types import Message
+from pyrogram.types import ChatAdministratorRights, Message
 
 from pytgcalls import PyTgCalls
 from pytgcalls import filters as fl
@@ -162,41 +162,115 @@ async def _fail_status(chat_id: int, status_message, content: str) -> None:
         pass
 
 
+async def _ensure_assistant_admin(chat_id: int) -> bool:
+    """Make the assistant a group admin so it can start the voice chat."""
+
+    try:
+        me = assistant.me or await assistant.get_me()
+        aid = me.id
+    except Exception as e:
+        LOGGER.warning(f"[VC] assistant identity failed: {e}")
+        return False
+
+    member = None
+    try:
+        member = await bot.get_chat_member(chat_id, aid)
+    except Exception:
+        member = None
+
+    if member is not None:
+        status = str(getattr(member, "status", "")).lower()
+        priv = getattr(member, "privileges", None)
+        if "owner" in status:
+            return True
+        if "administrator" in status and getattr(priv, "can_manage_video_chats", False):
+            return True
+
+    if member is None:
+        link = None
+        try:
+            link = await bot.create_chat_invite_link(chat_id, member_limit=1)
+            await assistant.join_chat(link.invite_link)
+            LOGGER.info(f"[VC] Assistant joined {chat_id}")
+        except Exception as e:
+            LOGGER.warning(f"[VC] assistant join failed: {e}")
+        finally:
+            if link is not None:
+                try:
+                    await bot.revoke_chat_invite_link(chat_id, link.invite_link)
+                except Exception:
+                    pass
+
+    try:
+        await bot.promote_chat_member(
+            chat_id,
+            aid,
+            privileges=ChatAdministratorRights(
+                can_manage_chat=True,
+                can_manage_video_chats=True,
+                can_invite_users=True,
+            ),
+        )
+        LOGGER.info(f"[VC] Assistant promoted in {chat_id}")
+        await asyncio.sleep(1)
+        return True
+    except Exception as e:
+        LOGGER.warning(f"[VC] assistant promote failed: {e}")
+        return False
+
+
+async def _create_vc(chat_id: int) -> None:
+    chat = await assistant.get_chat(chat_id)
+    await assistant.invoke(
+        CreateGroupCall(
+            peer=await assistant.resolve_peer(chat.id),
+            random_id=random.randint(10000, 99999),
+        )
+    )
+
+
 async def _ensure_vc(chat_id: int, status_message=None) -> bool:
 
     lang = chat_strings(chat_id)
     chat_id = int(chat_id)
     last_err = None
 
-    # Try the assistant first, then the bot (whichever is admin can start the VC).
-    for client, label in ((assistant, "assistant"), (bot, "bot")):
-
-        try:
-
-            chat = await client.get_chat(chat_id)
-
-            await client.invoke(
-                CreateGroupCall(
-                    peer=await client.resolve_peer(chat.id),
-                    random_id=random.randint(10000, 99999),
-                )
-            )
-
-            LOGGER.info(f"[VC] Created in {chat_id} via {label}")
-            await asyncio.sleep(2)
+    try:
+        await _create_vc(chat_id)
+        LOGGER.info(f"[VC] Created in {chat_id}")
+        await asyncio.sleep(2)
+        return True
+    except Exception as e:
+        last_err = e
+        err = str(e).lower()
+        if "already" in err or "groupcall_already_started" in err:
+            LOGGER.info(f"[VC] Already active in {chat_id}")
             return True
 
+    err = str(last_err or "").lower()
+    need_fix = any(
+        x in err
+        for x in (
+            "admin",
+            "participant",
+            "channel_private",
+            "not_in_chat",
+        )
+    )
+
+    if need_fix and await _ensure_assistant_admin(chat_id):
+        try:
+            await _create_vc(chat_id)
+            LOGGER.info(f"[VC] Created in {chat_id} after assistant setup")
+            await asyncio.sleep(2)
+            return True
         except Exception as e:
-
-            err = str(e).lower()
-
-            # already active
-            if "already" in err or "groupcall_already_started" in err:
-                LOGGER.info(f"[VC] Already active in {chat_id} ({label})")
-                return True
-
             last_err = e
-            LOGGER.warning(f"[VC] {label} create failed: {e}")
+            err = str(e).lower()
+            if "already" in err or "groupcall_already_started" in err:
+                LOGGER.info(f"[VC] Already active in {chat_id}")
+                return True
+            LOGGER.warning(f"[VC] create after assistant setup failed: {e}")
 
     err = str(last_err or "").lower()
 
