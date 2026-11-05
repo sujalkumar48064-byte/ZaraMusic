@@ -172,11 +172,26 @@ async def _ensure_assistant_admin(chat_id: int) -> bool:
         LOGGER.warning(f"[VC] assistant identity failed: {e}")
         return False
 
-    member = None
-    try:
-        member = await bot.get_chat_member(chat_id, aid)
-    except Exception:
-        member = None
+    async def _lookup_member():
+        try:
+            return await bot.get_chat_member(chat_id, aid)
+        except Exception:
+            return None
+
+    async def _cache_assistant_peer():
+        # Bots can only resolve a raw user id after seeing that user's access hash.
+        try:
+            query = me.first_name or ""
+            async for found in bot.get_chat_members(chat_id, query=query, limit=20):
+                if getattr(getattr(found, "user", None), "id", None) == aid:
+                    break
+        except Exception as e:
+            LOGGER.warning(f"[VC] assistant lookup failed: {e}")
+
+    member = await _lookup_member()
+    if member is None:
+        await _cache_assistant_peer()
+        member = await _lookup_member()
 
     if member is not None:
         status = str(getattr(member, "status", "")).lower()
@@ -200,6 +215,7 @@ async def _ensure_assistant_admin(chat_id: int) -> bool:
                     await bot.revoke_chat_invite_link(chat_id, link.invite_link)
                 except Exception:
                     pass
+        await _cache_assistant_peer()
 
     try:
         await bot.promote_chat_member(

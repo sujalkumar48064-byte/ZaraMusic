@@ -120,7 +120,7 @@ async def save_cookies() -> int:
 # ═════════════════════════════════════════════════════════════════════════════
 
 def _cached(video_id: str, video: bool) -> Optional[str]:
-    for ext in (("mp4", "webm") if video else ("m4a", "mp3", "webm")):
+    for ext in (("mp4", "webm") if video else ("m4a", "mp3")):
         path = os.path.join(DOWNLOAD_DIR, f"{video_id}.{ext}")
         if os.path.exists(path) and os.path.getsize(path) > 0:
             return path
@@ -198,14 +198,17 @@ def _pick_audio(data: dict):
     if not formats:
         return None
     # Prefer m4a/AAC: it is directly playable and avoids slow re-encoding.
-    m4a = [f for f in formats if "mp4" in (f.get("container") or f.get("type") or "")]
-    webm = [f for f in formats if "webm" in (f.get("container") or f.get("type") or "")]
+    def kind_of(f):
+        return (f.get("container") or f.get("type") or "").lower()
+
+    m4a = [f for f in formats if "m4a" in kind_of(f) or "mp4" in kind_of(f)]
+    webm = [f for f in formats if "webm" in kind_of(f)]
     best = max(m4a or webm or formats, key=_bitrate)
     url = best.get("url")
     if not url:
         return None
-    kind = best.get("container") or best.get("type") or ""
-    ext = ".m4a" if "mp4" in kind else ".webm" if "webm" in kind else ".m4a"
+    kind = kind_of(best)
+    ext = ".webm" if "webm" in kind else ".m4a"
     return url, ext
 
 
@@ -680,6 +683,49 @@ async def resolve_video_stream(url: str) -> str:
 # PUBLIC — YOUTUBE SEARCH / METADATA
 # ═════════════════════════════════════════════════════════════════════════════
 
+async def _search_invidious(query: str):
+    """Fallback search through Invidious when py-yt-search fails."""
+    if not INVIDIOUS_APIS:
+        return None
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            for base in INVIDIOUS_APIS:
+                try:
+                    async with session.get(
+                        f"{base}/api/v1/search",
+                        params={"q": query, "type": "video"},
+                        timeout=aiohttp.ClientTimeout(total=8),
+                    ) as resp:
+                        if resp.status != 200:
+                            logger.warning(f"[invidious] search {base}: HTTP {resp.status}")
+                            continue
+                        data = await resp.json(content_type=None)
+                except Exception as e:
+                    logger.warning(f"[invidious] search {base}: {e}")
+                    continue
+
+                if not isinstance(data, list):
+                    continue
+
+                item = next((x for x in data if x.get("videoId")), None)
+                if not item:
+                    continue
+
+                thumbs = item.get("videoThumbnails") or []
+                thumb = thumbs[0].get("url", "").split("?")[0] if thumbs else ""
+                return (
+                    f"https://www.youtube.com/watch?v={item['videoId']}",
+                    item.get("title", "Unknown"),
+                    sec_to_iso(int(item.get("lengthSeconds") or 0)),
+                    thumb,
+                )
+    except Exception as e:
+        logger.warning(f"[invidious] search error: {e}")
+
+    return None
+
+
 async def search_yt(query: str):
     """Search YouTube for a video or playlist. Returns metadata tuple or playlist dict."""
 
@@ -715,25 +761,37 @@ async def search_yt(query: str):
         return {"playlist": items}
 
     # ── Single video search ───────────────────────────────────────────────────
-    search  = VideosSearch(query, limit=1)
-    results = await search.next()
-    lst     = results.get("result", [])
-    if not lst:
-        raise Exception("ɴᴏ ʀᴇsᴜʟᴛs ғᴏᴜɴᴅ")
+    try:
+        search  = VideosSearch(query, limit=1)
+        results = await search.next()
+        lst     = results.get("result", [])
+    except Exception as e:
+        logger.warning(f"[yt] search failed: {e}")
+        lst     = []
 
-    r     = lst[0]
-    url   = r.get("link") or f"https://www.youtube.com/watch?v={r['id']}"
-    title = r.get("title", "Unknown")
-    thumb = (r.get("thumbnails") or [{}])[0].get("url", "").split("?")[0]
-    dur   = r.get("duration") or "0:00"
+    if lst:
+        r     = lst[0]
+        url   = r.get("link") or f"https://www.youtube.com/watch?v={r['id']}"
+        title = r.get("title", "Unknown")
+        thumb = (r.get("thumbnails") or [{}])[0].get("url", "").split("?")[0]
+        dur   = r.get("duration") or "0:00"
 
-    parts = [int(x) for x in dur.split(":")]
-    secs  = (
-        parts[0] * 3600 + parts[1] * 60 + parts[2]
-        if len(parts) == 3
-        else parts[0] * 60 + parts[1]
-    )
-    return (url, title, sec_to_iso(secs), thumb)
+        try:
+            parts = [int(x) for x in dur.split(":")]
+            secs  = (
+                parts[0] * 3600 + parts[1] * 60 + parts[2]
+                if len(parts) == 3
+                else parts[0] * 60 + parts[1]
+            )
+        except Exception:
+            secs = 0
+        return (url, title, sec_to_iso(secs), thumb)
+
+    fallback = await _search_invidious(query)
+    if fallback:
+        return fallback
+
+    raise Exception("ɴᴏ ʀᴇsᴜʟᴛs ғᴏᴜɴᴅ")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
