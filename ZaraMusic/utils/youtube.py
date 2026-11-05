@@ -120,7 +120,7 @@ async def save_cookies() -> int:
 # ═════════════════════════════════════════════════════════════════════════════
 
 def _cached(video_id: str, video: bool) -> Optional[str]:
-    for ext in (("mp4",) if video else ("mp3", "webm")):
+    for ext in (("mp4", "webm") if video else ("mp3", "webm", "m4a")):
         path = os.path.join(DOWNLOAD_DIR, f"{video_id}.{ext}")
         if os.path.exists(path) and os.path.getsize(path) > 0:
             return path
@@ -163,6 +163,328 @@ async def _download_via_api(video_id: str, video: bool) -> Optional[str]:
         logger.error(f"[api] download error: {e}")
         _cleanup(tmp)
         return None
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# FREE PUBLIC FALLBACKS  (no API key — Invidious + backup mirrors)
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _bitrate(fmt: dict) -> int:
+    try:
+        return int(fmt.get("bitrate") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _height(fmt: dict) -> int:
+    try:
+        if fmt.get("height"):
+            return int(fmt["height"])
+    except (TypeError, ValueError):
+        pass
+    label = str(fmt.get("qualityLabel") or fmt.get("resolution") or "")
+    match = re.search(r"(\d{2,4})p", label)
+    if match:
+        return int(match.group(1))
+    match = re.search(r"x(\d{2,4})", label)
+    return int(match.group(1)) if match else 0
+
+
+def _pick_audio(data: dict):
+    formats = [
+        f for f in (data.get("adaptiveFormats") or [])
+        if "audio" in (f.get("type") or "")
+    ]
+    if not formats:
+        return None
+    webm = [f for f in formats if "webm" in (f.get("container") or f.get("type") or "")]
+    best = max(webm or formats, key=_bitrate)
+    url = best.get("url")
+    if not url:
+        return None
+    ext = ".webm" if "webm" in (best.get("container") or best.get("type") or "") else ".m4a"
+    return url, ext
+
+
+def _pick_video(data: dict):
+    muxed = data.get("formatStreams") or []
+    if muxed:
+        best = max(muxed, key=_height)
+        url = best.get("url")
+        if url:
+            ext = ".webm" if "webm" in (best.get("container") or best.get("type") or "") else ".mp4"
+            return url, ext, None, None
+
+    formats = [
+        f for f in (data.get("adaptiveFormats") or [])
+        if "video" in (f.get("type") or "") and _height(f) <= 720
+    ]
+    mp4 = [f for f in formats if "mp4" in (f.get("type") or "")]
+    if not mp4:
+        return None
+    best = max(mp4, key=lambda f: (_height(f), _bitrate(f)))
+
+    audio = [
+        f for f in (data.get("adaptiveFormats") or [])
+        if "audio" in (f.get("type") or "") and "mp4" in (f.get("type") or "")
+    ]
+    if not audio:
+        return None
+    abest = max(audio, key=_bitrate)
+    if not best.get("url") or not abest.get("url"):
+        return None
+    return best["url"], ".mp4", abest["url"], ".m4a"
+
+
+async def _save_stream(resp, path: str) -> Optional[str]:
+    tmp = path + ".part"
+    try:
+        async with aiofiles.open(tmp, "wb") as handle:
+            async for chunk in resp.content.iter_chunked(131072):
+                await handle.write(chunk)
+        size = os.path.getsize(tmp) if os.path.exists(tmp) else 0
+        bad = size < 1024
+        if not bad:
+            with open(tmp, "rb") as handle:
+                bad = handle.read(64).lstrip()[:1] in (b"{", b"<", b"[")
+        if bad:
+            _cleanup(tmp)
+            return None
+        os.replace(tmp, path)
+        return path
+    except Exception as e:
+        logger.warning(f"[free] save failed: {e}")
+        _cleanup(tmp)
+        return None
+
+
+async def _download_url(session, url: str, path: str, attempts: int = 2) -> Optional[str]:
+    for attempt in range(1, attempts + 1):
+        try:
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=YT_STREAM_TIMEOUT)
+            ) as resp:
+                if resp.status != 200:
+                    logger.warning(f"[free] HTTP {resp.status} (attempt {attempt}/{attempts})")
+                    continue
+                got = await _save_stream(resp, path)
+            if got:
+                return got
+        except Exception as e:
+            logger.warning(f"[free] download error (attempt {attempt}/{attempts}): {e}")
+    return None
+
+
+async def _merge_av(video_path: str, audio_path: str, out_path: str) -> Optional[str]:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        logger.warning("[invidious] ffmpeg not found; cannot merge video")
+        return None
+    tmp = out_path + ".render.mp4"
+    cmd = [
+        ffmpeg, "-y", "-loglevel", "error",
+        "-i", video_path, "-i", audio_path,
+        "-c", "copy", "-movflags", "+faststart", "-f", "mp4", tmp,
+    ]
+    proc = None
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=300)
+        if proc.returncode != 0:
+            tail = (err or b"").decode(errors="ignore")[-300:]
+            logger.warning(f"[invidious] ffmpeg failed: {tail}")
+            _cleanup(tmp)
+            return None
+        if not os.path.exists(tmp) or os.path.getsize(tmp) < 1024:
+            _cleanup(tmp)
+            return None
+        os.replace(tmp, out_path)
+        return out_path
+    except Exception as e:
+        logger.warning(f"[invidious] merge error: {e}")
+        if proc and proc.returncode is None:
+            proc.kill()
+        _cleanup(tmp)
+        return None
+
+
+async def _fetch_invidious(session, video_id: str):
+    for base in INVIDIOUS_APIS:
+        try:
+            async with session.get(
+                f"{base}/api/v1/videos/{video_id}",
+                params={"local": "true"},
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as resp:
+                if resp.status != 200:
+                    logger.warning(f"[invidious] {base}: HTTP {resp.status}")
+                    continue
+                data = await resp.json(content_type=None)
+            if not isinstance(data, dict) or data.get("error"):
+                logger.warning(f"[invidious] {base}: {str((data or {}).get('error'))[:120]}")
+                continue
+            return data
+        except Exception as e:
+            logger.warning(f"[invidious] {base}: {e}")
+    return None
+
+
+async def _download_via_invidious(video_id: str, video: bool) -> Optional[str]:
+    if not INVIDIOUS_APIS:
+        return None
+    async with aiohttp.ClientSession() as session:
+        data = await _fetch_invidious(session, video_id)
+        if not data:
+            return None
+
+        if not video:
+            picked = _pick_audio(data)
+            if not picked:
+                logger.warning(f"[invidious] no audio stream for {video_id}")
+                return None
+            url, ext = picked
+            path = os.path.join(DOWNLOAD_DIR, f"{video_id}{ext}")
+            got = await _download_url(session, url, path)
+            if got:
+                logger.info(f"[invidious] Downloaded audio {video_id}")
+            return got
+
+        picked = _pick_video(data)
+        if not picked:
+            logger.warning(f"[invidious] no video stream for {video_id}")
+            return None
+        vurl, vext, aurl, aext = picked
+
+        if not aurl:
+            path = os.path.join(DOWNLOAD_DIR, f"{video_id}{vext}")
+            got = await _download_url(session, vurl, path)
+            if got:
+                logger.info(f"[invidious] Downloaded video {video_id}")
+            return got
+
+        path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp4")
+        vpath = os.path.join(DOWNLOAD_DIR, f".{video_id}.video{vext}")
+        apath = os.path.join(DOWNLOAD_DIR, f".{video_id}.audio{aext}")
+        try:
+            if not await _download_url(session, vurl, vpath):
+                return None
+            if not await _download_url(session, aurl, apath):
+                return None
+            if not await _merge_av(vpath, apath, path):
+                return None
+            logger.info(f"[invidious] Downloaded + merged video {video_id}")
+            return path
+        finally:
+            _cleanup(vpath)
+            _cleanup(apath)
+
+
+async def _download_via_multimp3(video_id: str) -> Optional[str]:
+    path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
+    payload = {"url": f"https://www.youtube.com/watch?v={video_id}", "quality": "128"}
+    try:
+        async with aiohttp.ClientSession() as session:
+            for attempt in range(1, 3):
+                try:
+                    async with session.post(
+                        "https://multimp3.vercel.app/api/download",
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=YT_STREAM_TIMEOUT),
+                    ) as resp:
+                        if resp.status != 200:
+                            logger.warning(
+                                f"[free:multimp3] HTTP {resp.status} (attempt {attempt}/2)"
+                            )
+                            continue
+                        got = await _save_stream(resp, path)
+                    if got:
+                        logger.info(f"[free:multimp3] Downloaded {video_id}")
+                        return got
+                except Exception as e:
+                    logger.warning(f"[free:multimp3] attempt {attempt}/2: {e}")
+    except Exception as e:
+        logger.warning(f"[free:multimp3] {e}")
+    return None
+
+
+async def _download_via_samplecut(video_id: str) -> Optional[str]:
+    path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
+    payload = {"url": f"https://www.youtube.com/watch?v={video_id}", "format": "mp3"}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.samplecut.app/v1/downloads",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=180),
+            ) as resp:
+                if resp.status not in (200, 201):
+                    logger.warning(f"[free:samplecut] HTTP {resp.status}")
+                    return None
+                data = await resp.json(content_type=None)
+            link = (data or {}).get("download_url")
+            if not link:
+                logger.warning("[free:samplecut] no download_url")
+                return None
+            got = await _download_url(session, link, path)
+            if got:
+                logger.info(f"[free:samplecut] Downloaded {video_id}")
+            return got
+    except Exception as e:
+        logger.warning(f"[free:samplecut] {e}")
+        return None
+
+
+async def _download_via_freeapi(video_id: str, video: bool) -> Optional[str]:
+    ext = ".mp4" if video else ".mp3"
+    path = os.path.join(DOWNLOAD_DIR, f"{video_id}{ext}")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "https://freeapi.pro/api/alldl",
+                params={"url": f"https://www.youtube.com/watch?v={video_id}"},
+                timeout=aiohttp.ClientTimeout(total=120),
+            ) as resp:
+                if resp.status != 200:
+                    logger.warning(f"[free:freeapi] HTTP {resp.status}")
+                    return None
+                data = await resp.json(content_type=None)
+            if not (data or {}).get("success"):
+                logger.warning(f"[free:freeapi] {str((data or {}).get('error'))[:120]}")
+                return None
+            media = (data.get("mediaInfo") or {}).get("videoUrl" if video else "audioUrl")
+            if not media:
+                logger.warning("[free:freeapi] no media url")
+                return None
+            got = await _download_url(session, media, path)
+            if got:
+                logger.info(f"[free:freeapi] Downloaded {video_id}")
+            return got
+    except Exception as e:
+        logger.warning(f"[free:freeapi] {e}")
+        return None
+
+
+async def _download_via_free(video_id: str, video: bool) -> Optional[str]:
+    if not FREE_API_FALLBACK:
+        return None
+
+    got = await _download_via_invidious(video_id, video)
+    if got:
+        return got
+
+    if not video:
+        got = await _download_via_multimp3(video_id)
+        if got:
+            return got
+        got = await _download_via_samplecut(video_id)
+        if got:
+            return got
+
+    return await _download_via_freeapi(video_id, video)
 
 
 async def _download_ytdlp(video_id: str, video: bool) -> Optional[str]:
@@ -231,19 +553,30 @@ async def _download(link: str, video: bool) -> Optional[str]:
         return have
 
     api_set = bool(API_URL and API_KEY)
+    cookie_ready = bool(USE_COOKIES and _get_cookie_file())
 
-    if api_set and not USE_COOKIES:           # API first (fast start)
-        got = await _download_via_api(video_id, video)
+    if not cookie_ready:                       # free/API first (fast start)
+        if api_set:
+            got = await _download_via_api(video_id, video)
+            if got:
+                return got
+            logger.info(f"[yt] API failed, trying free fallback for {video_id}")
+        got = await _download_via_free(video_id, video)
         if got:
             return got
-        logger.info(f"[yt] API failed, trying yt-dlp for {video_id}")
+        logger.info(f"[yt] free fallback failed, trying yt-dlp for {video_id}")
+        return await _download_ytdlp(video_id, video)
 
     got = await _download_ytdlp(video_id, video)
     if got:
         return got
 
-    if api_set and USE_COOKIES:               # cookies failed → API fallback
-        logger.info(f"[yt] yt-dlp failed, trying API for {video_id}")
+    logger.info(f"[yt] yt-dlp failed, trying free fallback for {video_id}")
+    got = await _download_via_free(video_id, video)
+    if got:
+        return got
+    if api_set:
+        logger.info(f"[yt] free fallback failed, trying API for {video_id}")
         return await _download_via_api(video_id, video)
     return None
 

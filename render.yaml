@@ -38,6 +38,12 @@ services:
       - key: API_KEY
         sync: false
 
+      - key: INVIDIOUS_APIS
+        value: https://yt.chocolatemoo53.com
+
+      - key: FREE_API_FALLBACK
+        value: "True"
+
       - key: USE_COOKIES
         sync: false
 

@@ -43,6 +43,15 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 USE_COOKIES = _env_bool("USE_COOKIES", not (API_URL and API_KEY))
+
+# Free public fallback (no API key). Invidious mirrors help when yt-dlp is
+# blocked by YouTube on datacenter IPs.
+INVIDIOUS_APIS = [
+    u.strip().rstrip("/")
+    for u in os.getenv("INVIDIOUS_APIS", "https://yt.chocolatemoo53.com").replace(",", " ").split()
+    if u.strip().startswith("http")
+]
+FREE_API_FALLBACK = _env_bool("FREE_API_FALLBACK", True)
 # batbin.me links to cookie files (space / comma / newline separated)
 COOKIES_URL = [
     u for u in os.getenv("COOKIES_URL", "").replace(",", " ").split()
