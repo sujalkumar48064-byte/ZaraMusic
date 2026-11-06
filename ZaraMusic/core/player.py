@@ -14,7 +14,7 @@ from pytgcalls.exceptions import NoActiveGroupCall
 from pytgcalls.types import (
     AudioQuality,
     MediaStream,
-    VideoParameters,
+    VideoQuality,
     ChatUpdate,
     StreamEnded,
     GroupCallConfig,
@@ -461,12 +461,7 @@ async def play_song(
                 stream = MediaStream(
                     media_path,
                     audio_parameters=AudioQuality.HIGH,
-                    video_parameters=VideoParameters(
-                        854,
-                        480,
-                        max(15, min(config.VIDEO_FPS, 30)),
-                        adjust_by_height=False,
-                    ),
+                    video_parameters=VideoQuality.SD_480p,
                 )
             else:
                 stream = MediaStream(
