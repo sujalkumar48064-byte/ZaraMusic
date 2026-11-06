@@ -432,7 +432,7 @@ async def play_song(
                 stream = MediaStream(
                     media_path,
                     audio_parameters=AudioQuality.HIGH,
-                    video_parameters=VideoQuality.HD_720p,
+                    video_parameters=VideoQuality.SD_480p,
                 )
             else:
                 stream = MediaStream(

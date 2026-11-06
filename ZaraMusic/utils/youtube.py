@@ -213,9 +213,14 @@ def _pick_audio(data: dict):
 
 
 def _pick_video(data: dict):
-    muxed = data.get("formatStreams") or []
+    # Prefer a ready muxed stream (no merge, less CPU) capped at 480p.
+    muxed_all = data.get("formatStreams") or []
+    muxed = [f for f in muxed_all if _height(f) <= 480]
+    if not muxed and muxed_all:
+        muxed = [min(muxed_all, key=_height)]
+
     if muxed:
-        best = max(muxed, key=_height)
+        best = max(muxed, key=lambda f: (_height(f), _bitrate(f)))
         url = best.get("url")
         if url:
             ext = ".webm" if "webm" in (best.get("container") or best.get("type") or "") else ".mp4"
@@ -223,7 +228,7 @@ def _pick_video(data: dict):
 
     formats = [
         f for f in (data.get("adaptiveFormats") or [])
-        if "video" in (f.get("type") or "") and _height(f) <= 720
+        if "video" in (f.get("type") or "") and _height(f) <= 480
     ]
     mp4 = [f for f in formats if "mp4" in (f.get("type") or "")]
     if not mp4:
