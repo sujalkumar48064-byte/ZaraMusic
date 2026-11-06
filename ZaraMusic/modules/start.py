@@ -81,7 +81,11 @@ async def start_handler(_, message: Message) -> None:
     # ── Private ───────────────────────────────────────────────────────────────
     if chat_type == ChatType.PRIVATE:
 
-        caption = rich_img(photo) + _onboarding_body(lang, uid, name)
+        caption = (
+            rich_img(photo)
+            + rich_heading(config.BANNER_TAGLINE, level=3)
+            + _onboarding_body(lang, uid, name)
+        )
         kb = start_private_kb(lang)
 
         try:
@@ -121,6 +125,7 @@ async def start_handler(_, message: Message) -> None:
 
         caption = (
             rich_img(photo)
+            + rich_heading(config.BANNER_TAGLINE, level=3)
             + f"<p>{lang['group_thanks_title'].format(mention, rich_esc(config.BOT_NAME))}</p>"
             + rich_note(lang["group_thanks_note"].format(rich_esc(chat_title), rich_esc(name)))
             + support_updates_pills(lang)

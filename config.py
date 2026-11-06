@@ -79,6 +79,18 @@ START_PHOTOS = [
     "https://raw.githubusercontent.com/sujalkumar48064-byte/ZaraMusic/main/Pic/IMG_20261104_125510.jpg",
 ]
 
+BANNER_TAGLINE = "✧ sᴍᴀʀᴛ ᴍᴜsɪᴄ ʙᴏᴛ ᴡɪᴛʜ ᴘʀᴇᴍɪᴜᴍ ʟᴏᴏᴋ, ғᴀsᴛ & sᴇᴄᴜʀᴇ ✧"
+
+BOT_SHORT_BIO = "✧ sᴍᴀʀᴛ ᴍᴜsɪᴄ ʙᴏᴛ ᴡɪᴛʜ ᴘʀᴇᴍɪᴜᴍ ʟᴏᴏᴋ, ғᴀsᴛ & sᴇᴄᴜʀᴇ ✧"
+
+BOT_DESCRIPTION = (
+    "❍ sᴍᴀʀᴛ ᴍᴜsɪᴄ ʙᴏᴛ ᴡɪᴛʜ ᴘʀᴇᴍɪᴜᴍ ʟᴏᴏᴋ\n"
+    "❍ ғᴀsᴛ, sᴛᴀʙʟᴇ & sᴇᴄᴜʀᴇ ᴘʟᴀʏʙᴀᴄᴋ\n"
+    "❍ ʜɪɢʜ-ǫᴜᴀʟɪᴛʏ ᴠᴏɪᴄᴇ & sᴍᴏᴏᴛʜ ᴠɪᴅᴇᴏ\n"
+    "❍ ᴍᴜʟᴛɪ-ɢʀᴏᴜᴘ sᴜᴘᴘᴏʀᴛ\n"
+    "✧ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ZᴀʀᴀMᴜsɪᴄ ✧"
+)
+
 # ── Limits ────────────────────────────────────────────────────────────────────
 MAX_DURATION_SECONDS = 1800   # 30 minutes
 QUEUE_LIMIT          = 20

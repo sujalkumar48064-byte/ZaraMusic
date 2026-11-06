@@ -9,7 +9,7 @@ import time
 import requests
 from flask import Flask
 from pyrogram import idle
-from pyrogram.types import BotCommand
+from pyrogram.types import BotCommand, BotCommandScopeChat, ChatAdministratorRights
 
 import config
 from ZaraMusic import LOGGER, assistant, bot, call_py
@@ -152,39 +152,120 @@ if __name__ == "__main__":
     ZaraMusic.call_py = PyTgCalls(assistant)
     call_py = ZaraMusic.call_py
 
-    # 5. Set bot commands
+    # 5. Set bot commands, admin rights & profile
+    bot_commands = [
+        BotCommand("start", "✧ sᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ ✧"),
+        BotCommand("help", "✧ ɢᴇᴛ ʜᴇʟᴘ ᴍᴇɴᴜ ✧"),
+        BotCommand("play", "✧ ᴘʟᴀʏ ᴀ sᴏɴɢ ✧"),
+        BotCommand("vplay", "✧ ᴘʟᴀʏ ᴀ ᴠɪᴅᴇᴏ ✧"),
+        BotCommand("cplay", "✧ ᴘʟᴀʏ ɪɴ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ ✧"),
+        BotCommand("cvplay", "✧ ᴠɪᴅᴇᴏ ɪɴ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ ✧"),
+        BotCommand("playforce", "✧ ᴘʟᴀʏ ɴᴏᴡ, ᴋᴇᴇᴘ ǫᴜᴇᴜᴇ ✧"),
+        BotCommand("vplayforce", "✧ ᴠɪᴅᴇᴏ ɴᴏᴡ, ᴋᴇᴇᴘ ǫᴜᴇᴜᴇ ✧"),
+        BotCommand("cplayforce", "✧ ᴄʜᴀɴɴᴇʟ ᴘʟᴀʏ ɴᴏᴡ ✧"),
+        BotCommand("cvplayforce", "✧ ᴄʜᴀɴɴᴇʟ ᴠɪᴅᴇᴏ ɴᴏᴡ ✧"),
+        BotCommand("pause", "✧ ᴘᴀᴜsᴇ ᴘʟᴀʏʙᴀᴄᴋ ✧"),
+        BotCommand("cpause", "✧ ᴘᴀᴜsᴇ ᴄʜᴀɴɴᴇʟ ✧"),
+        BotCommand("resume", "✧ ʀᴇsᴜᴍᴇ ᴘʟᴀʏʙᴀᴄᴋ ✧"),
+        BotCommand("cresume", "✧ ʀᴇsᴜᴍᴇ ᴄʜᴀɴɴᴇʟ ✧"),
+        BotCommand("skip", "✧ sᴋɪᴘ sᴏɴɢ ✧"),
+        BotCommand("cskip", "✧ sᴋɪᴘ ɪɴ ᴄʜᴀɴɴᴇʟ ✧"),
+        BotCommand("stop", "✧ sᴛᴏᴘ & ᴄʟᴇᴀʀ ✧"),
+        BotCommand("cstop", "✧ sᴛᴏᴘ ᴄʜᴀɴɴᴇʟ ✧"),
+        BotCommand("end", "✧ ᴇɴᴅ sᴛʀᴇᴀᴍ ✧"),
+        BotCommand("cend", "✧ ᴇɴᴅ ᴄʜᴀɴɴᴇʟ sᴛʀᴇᴀᴍ ✧"),
+        BotCommand("clear", "✧ ᴄʟᴇᴀʀ ǫᴜᴇᴜᴇ ✧"),
+        BotCommand("cclear", "✧ ᴄʟᴇᴀʀ ᴄʜᴀɴɴᴇʟ ǫᴜᴇᴜᴇ ✧"),
+        BotCommand("seek", "✧ sᴇᴇᴋ ғᴏʀᴡᴀʀᴅ ✧"),
+        BotCommand("cseek", "✧ ᴄʜᴀɴɴᴇʟ sᴇᴇᴋ ✧"),
+        BotCommand("seekback", "✧ sᴇᴇᴋ ʙᴀᴄᴋ ✧"),
+        BotCommand("cseekback", "✧ ᴄʜᴀɴɴᴇʟ sᴇᴇᴋ ʙᴀᴄᴋ ✧"),
+        BotCommand("speed", "✧ sᴇᴛ ᴘʟᴀʏʙᴀᴄᴋ sᴘᴇᴇᴅ ✧"),
+        BotCommand("cspeed", "✧ ᴄʜᴀɴɴᴇʟ sᴘᴇᴇᴅ ✧"),
+        BotCommand("speedreset", "✧ ʀᴇsᴇᴛ sᴘᴇᴇᴅ ✧"),
+        BotCommand("cspeedreset", "✧ ʀᴇsᴇᴛ ᴄʜᴀɴɴᴇʟ sᴘᴇᴇᴅ ✧"),
+        BotCommand("bass", "✧ sᴇᴛ ʙᴀss ʙᴏᴏsᴛ ✧"),
+        BotCommand("cbass", "✧ ᴄʜᴀɴɴᴇʟ ʙᴀss ✧"),
+        BotCommand("bassoff", "✧ ᴅɪsᴀʙʟᴇ ʙᴀss ✧"),
+        BotCommand("cbassoff", "✧ ᴅɪsᴀʙʟᴇ ᴄʜᴀɴɴᴇʟ ʙᴀss ✧"),
+        BotCommand("effecton", "✧ ᴇɴᴀʙʟᴇ ᴇғғᴇᴄᴛs ✧"),
+        BotCommand("ceffecton", "✧ ᴄʜᴀɴɴᴇʟ ᴇғғᴇᴄᴛs ᴏɴ ✧"),
+        BotCommand("effectoff", "✧ ᴅɪsᴀʙʟᴇ ᴇғғᴇᴄᴛs ✧"),
+        BotCommand("ceffectoff", "✧ ᴄʜᴀɴɴᴇʟ ᴇғғᴇᴄᴛs ᴏғғ ✧"),
+        BotCommand("effects", "✧ ᴠɪᴇᴡ ᴇғғᴇᴄᴛs ✧"),
+        BotCommand("ceffects", "✧ ᴄʜᴀɴɴᴇʟ ᴇғғᴇᴄᴛs ✧"),
+        BotCommand("autoplay", "✧ ᴀᴜᴛᴏ-ᴘʟᴀʏ ʀᴇʟᴀᴛᴇᴅ sᴏɴɢs ✧"),
+        BotCommand("cautoplay", "✧ ᴄʜᴀɴɴᴇʟ ᴀᴜᴛᴏ-ᴘʟᴀʏ ✧"),
+        BotCommand("language", "✧ ᴄʜᴀɴɢᴇ ʙᴏᴛ ʟᴀɴɢᴜᴀɢᴇ ✧"),
+        BotCommand("setlang", "✧ sᴇᴛ ʟᴀɴɢᴜᴀɢᴇ ✧"),
+        BotCommand("lang", "✧ ᴄʜᴀɴɢᴇ ʟᴀɴɢᴜᴀɢᴇ ✧"),
+        BotCommand("pcreate", "✧ ᴄʀᴇᴀᴛᴇ ᴀ ᴘʟᴀʏʟɪsᴛ ✧"),
+        BotCommand("padd", "✧ ᴀᴅᴅ sᴏɴɢ ᴛᴏ ᴘʟᴀʏʟɪsᴛ ✧"),
+        BotCommand("premove", "✧ ʀᴇᴍᴏᴠᴇ sᴏɴɢ ғʀᴏᴍ ᴘʟᴀʏʟɪsᴛ ✧"),
+        BotCommand("pview", "✧ ᴠɪᴇᴡ ᴘʟᴀʏʟɪsᴛs ✧"),
+        BotCommand("pplay", "✧ ᴘʟᴀʏ ᴀ ᴘʟᴀʏʟɪsᴛ ✧"),
+        BotCommand("cpplay", "✧ ᴘʟᴀʏ ᴘʟᴀʏʟɪsᴛ ɪɴ ᴄʜᴀɴɴᴇʟ ✧"),
+        BotCommand("pdelete", "✧ ᴅᴇʟᴇᴛᴇ ᴀ ᴘʟᴀʏʟɪsᴛ ✧"),
+        BotCommand("addchannel", "✧ ʟɪɴᴋ ᴀ ᴄʜᴀɴɴᴇʟ ғᴏʀ ᴘʟᴀʏ ✧"),
+        BotCommand("setchannel", "✧ ʟɪɴᴋ ᴀ ᴄʜᴀɴɴᴇʟ ✧"),
+        BotCommand("delchannel", "✧ ᴜɴʟɪɴᴋ ᴄʜᴀɴɴᴇʟ ✧"),
+        BotCommand("removechannel", "✧ ᴜɴʟɪɴᴋ ᴄʜᴀɴɴᴇʟ ✧"),
+        BotCommand("thumbnail", "✧ sᴏɴɢ ᴛʜᴜᴍʙɴᴀɪʟ ᴏɴ/ᴏғғ ✧"),
+        BotCommand("cthumbnail", "✧ ᴄʜᴀɴɴᴇʟ ᴛʜᴜᴍʙɴᴀɪʟ ✧"),
+        BotCommand("ping", "✧ ʙᴏᴛ sᴛᴀᴛs ✧"),
+        BotCommand("speedtest", "✧ ɴᴇᴛᴡᴏʀᴋ sᴘᴇᴇᴅ ✧"),
+        BotCommand("spt", "✧ ɴᴇᴛᴡᴏʀᴋ sᴘᴇᴇᴅ ✧"),
+        BotCommand("id", "✧ sʜᴏᴡ ᴄʜᴀᴛ ᴀɴᴅ ᴜsᴇʀ ɪᴅ ✧"),
+        BotCommand("reboot", "✧ ʀᴇsᴛᴀʀᴛ ᴘʟᴀʏʙᴀᴄᴋ ✧"),
+    ]
+
+    owner_commands = [
+        BotCommand("stats", "✧ sʏsᴛᴇᴍ sᴛᴀᴛs ✧"),
+        BotCommand("broadcast", "✧ ʙʀᴏᴀᴅᴄᴀsᴛ ᴍᴇssᴀɢᴇ ✧"),
+        BotCommand("gcast", "✧ ɢʟᴏʙᴀʟ ʙʀᴏᴀᴅᴄᴀsᴛ ✧"),
+        BotCommand("logger", "✧ ʟᴏɢɢᴇʀ sᴇᴛᴛɪɴɢs ✧"),
+        BotCommand("gblock", "✧ ʙʟᴏᴄᴋ ᴀ ɢʀᴏᴜᴘ ✧"),
+        BotCommand("gunblock", "✧ ᴜɴʙʟᴏᴄᴋ ᴀ ɢʀᴏᴜᴘ ✧"),
+        BotCommand("ublock", "✧ ʙʟᴏᴄᴋ ᴀ ᴜsᴇʀ ✧"),
+        BotCommand("uunblock", "✧ ᴜɴʙʟᴏᴄᴋ ᴀ ᴜsᴇʀ ✧"),
+        BotCommand("blocklist", "✧ ᴠɪᴇᴡ ʙʟᴏᴄᴋ ʟɪsᴛ ✧"),
+    ]
+
     try:
-        bot.set_bot_commands([
-            BotCommand("start",  "✧ sᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ ✧"),
-            BotCommand("help",   "✧ ɢᴇᴛ ʜᴇʟᴘ ᴍᴇɴᴜ ✧"),
-            BotCommand("play",   "✧ ᴘʟᴀʏ ᴀ sᴏɴɢ ✧"),
-            BotCommand("pause",  "✧ ᴘᴀᴜsᴇ ᴘʟᴀʏʙᴀᴄᴋ ✧"),
-            BotCommand("resume", "✧ ʀᴇsᴜᴍᴇ ᴘʟᴀʏʙᴀᴄᴋ ✧"),
-            BotCommand("skip",   "✧ sᴋɪᴘ sᴏɴɢ ✧"),
-            BotCommand("stop",   "✧ sᴛᴏᴘ & ᴄʟᴇᴀʀ ✧"),
-            BotCommand("ping",   "✧ ʙᴏᴛ sᴛᴀᴛs ✧"),
-            BotCommand("autoplay", "✧ ᴀᴜᴛᴏ-ᴘʟᴀʏ ʀᴇʟᴀᴛᴇᴅ sᴏɴɢs ✧"),
-            BotCommand("language", "✧ ᴄʜᴀɴɢᴇ ʙᴏᴛ ʟᴀɴɢᴜᴀɢᴇ ✧"),
-            BotCommand("playforce", "✧ ᴘʟᴀʏ ɴᴏᴡ, ᴋᴇᴇᴘ ǫᴜᴇᴜᴇ ✧"),
-            BotCommand("pcreate", "✧ ᴄʀᴇᴀᴛᴇ ᴀ ᴘʟᴀʏʟɪsᴛ ✧"),
-            BotCommand("padd", "✧ ᴀᴅᴅ sᴏɴɢ ᴛᴏ ᴘʟᴀʏʟɪsᴛ ✧"),
-            BotCommand("premove", "✧ ʀᴇᴍᴏᴠᴇ sᴏɴɢ ғʀᴏᴍ ᴘʟᴀʏʟɪsᴛ ✧"),
-            BotCommand("pview", "✧ ᴠɪᴇᴡ ᴘʟᴀʏʟɪsᴛs ✧"),
-            BotCommand("pplay", "✧ ᴘʟᴀʏ ᴀ ᴘʟᴀʏʟɪsᴛ ✧"),
-            BotCommand("pdelete", "✧ ᴅᴇʟᴇᴛᴇ ᴀ ᴘʟᴀʏʟɪsᴛ ✧"),
-            BotCommand("addchannel", "✧ ʟɪɴᴋ ᴀ ᴄʜᴀɴɴᴇʟ ғᴏʀ ᴘʟᴀʏ ✧"),
-            BotCommand("delchannel", "✧ ᴜɴʟɪɴᴋ ᴄʜᴀɴɴᴇʟ ✧"),
-            BotCommand("cplay", "✧ ᴘʟᴀʏ ɪɴ ᴄʜᴀɴɴᴇʟ ✧"),
-            BotCommand("cvplay", "✧ ᴠɪᴅᴇᴏ ɪɴ ᴄʜᴀɴɴᴇʟ ✧"),
-            BotCommand("cpause", "✧ ᴘᴀᴜsᴇ ᴄʜᴀɴɴᴇʟ ✧"),
-            BotCommand("cresume", "✧ ʀᴇsᴜᴍᴇ ᴄʜᴀɴɴᴇʟ ✧"),
-            BotCommand("cskip", "✧ sᴋɪᴘ ɪɴ ᴄʜᴀɴɴᴇʟ ✧"),
-            BotCommand("cstop", "✧ sᴛᴏᴘ ᴄʜᴀɴɴᴇʟ ✧"),
-            BotCommand("thumbnail", "✧ sᴏɴɢ ᴛʜᴜᴍʙɴᴀɪʟ ᴏɴ/ᴏғғ ✧"),
-        ])
-        LOGGER.info("Bot commands set")
+        bot.set_bot_commands(bot_commands)
+        LOGGER.info(f"Bot commands set ({len(bot_commands)})")
     except Exception as e:
         LOGGER.warning(f"Could not set bot commands: {e}")
+
+    try:
+        bot.set_bot_commands(
+            bot_commands + owner_commands,
+            scope=BotCommandScopeChat(chat_id=config.OWNER_ID),
+        )
+        LOGGER.info(f"Owner commands set ({len(owner_commands)})")
+    except Exception as e:
+        LOGGER.warning(f"Could not set owner commands: {e}")
+
+    try:
+        bot.set_bot_default_privileges(
+            ChatAdministratorRights(
+                can_manage_chat=True,
+                can_delete_messages=True,
+                can_manage_video_chats=True,
+                can_invite_users=True,
+                can_promote_members=True,
+            )
+        )
+        LOGGER.info("Default admin rights set")
+    except Exception as e:
+        LOGGER.warning(f"Could not set default admin rights: {e}")
+
+    try:
+        bot.set_bot_info_short_description(config.BOT_SHORT_BIO)
+        bot.set_bot_info_description(config.BOT_DESCRIPTION)
+        LOGGER.info("Bot bio and description set")
+    except Exception as e:
+        LOGGER.warning(f"Could not set bot bio/description: {e}")
 
     # 6. Assistant — started
     try:
