@@ -121,7 +121,7 @@ skip_queue_empty_note: "क्यू अब खाली है"
 stop_stopped_title: "⏹ प्लेबैक बंद"
 stop_stopped_note:  "क्यू साफ़ हो गई · वॉइस चैट छोड़ दी"
 clear_cleared_title: "🧹 क्यू साफ़ हो गई"
-clear_cleared_note:  "सभी गाने हटा दिए गए"
+clear_cleared_note:  "आगामी गाने हटा दिए गए"
 reboot_title: "🔄 चैट रीबूट हो गई"
 reboot_note:  "सभी स्थितियां रीसेट हो गईं"
 

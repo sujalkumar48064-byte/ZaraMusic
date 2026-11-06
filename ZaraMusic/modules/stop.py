@@ -4,8 +4,9 @@ from pyrogram.types import Message
 from ZaraMusic import bot
 from ZaraMusic.core.channels import target_chat
 from ZaraMusic.core.call import leave_vc
-from ZaraMusic.core.queue import clear_queue, queue_size
+from ZaraMusic.core.queue import clear_upcoming, queue_lock
 from ZaraMusic.modules.block import group_allowed, user_allowed
+from ZaraMusic.utils.helpers import delete_file
 from ZaraMusic.utils.language import chat_strings
 from ZaraMusic.utils.permissions import is_user_authorized
 from richgram import rich_heading, rich_note, rich_send
@@ -64,11 +65,19 @@ async def clear_cmd(_, message: Message) -> None:
     except Exception:
         pass
 
-    if not queue_size(chat_id):
+    async with queue_lock(chat_id):
+        cleared = clear_upcoming(chat_id)
+
+    if not cleared:
         await rich_send(bot, chat_id, rich_heading(lang["queue_empty_title"], level=3))
         return
 
-    clear_queue(chat_id)
+    for song in cleared:
+        try:
+            delete_file(song.get("file_path", ""))
+        except Exception:
+            pass
+
     await rich_send(
         bot, chat_id,
         rich_heading(lang["clear_cleared_title"], level=3)
@@ -86,6 +95,15 @@ async def clear_cmd(_, message: Message) -> None:
 async def reboot_cmd(_, message: Message) -> None:
     chat_id = message.chat.id
     lang = chat_strings(chat_id)
+
+    if not await is_user_authorized(message):
+        await rich_send(
+            bot, chat_id,
+            rich_heading(lang["admin_only_title"], level=3)
+            + rich_note(lang["admin_only_note"]),
+        )
+        return
+
     await leave_vc(chat_id)
     await rich_send(
         bot, chat_id,

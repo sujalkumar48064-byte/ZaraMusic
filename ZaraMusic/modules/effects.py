@@ -11,6 +11,7 @@ from ZaraMusic.core.queue import peek_current
 from ZaraMusic.modules.block import group_allowed, user_allowed
 from ZaraMusic.utils.formatters import short
 from ZaraMusic.utils.language import chat_strings
+from ZaraMusic.utils.permissions import is_user_authorized
 from richgram import (
     rich_edit,
     rich_esc,
@@ -252,6 +253,17 @@ async def maybe_apply_effects(chat_id: int, file_path: str) -> str:
 # COMMANDS
 # ══════════════════════════════════════════════════════════════════════════════
 
+async def _require_admin(chat_id: int, message: Message, lang: dict) -> bool:
+    if await is_user_authorized(message):
+        return True
+    await rich_send(
+        bot, chat_id,
+        rich_heading(lang["admin_only_title"], level=3)
+        + rich_note(lang["admin_only_note"]),
+    )
+    return False
+
+
 @bot.on_message(
     filters.group
     & filters.regex(r"^/c?speed(?:@\w+)?\s+(?P<val>[\d.]+)$")
@@ -262,6 +274,8 @@ async def speed_cmd(_, message: Message) -> None:
     if chat_id is None:
         return
     lang = chat_strings(chat_id)
+    if not await _require_admin(chat_id, message, lang):
+        return
     try:
         val = round(float(message.matches[0].group("val")), 2)
     except ValueError:
@@ -293,6 +307,9 @@ async def speedreset_cmd(_, message: Message) -> None:
     chat_id = await target_chat(message)
     if chat_id is None:
         return
+    lang = chat_strings(chat_id)
+    if not await _require_admin(chat_id, message, lang):
+        return
     set_speed(chat_id, SPEED_DEFAULT)
     try:
         await message.delete()
@@ -311,6 +328,8 @@ async def bass_cmd(_, message: Message) -> None:
     if chat_id is None:
         return
     lang = chat_strings(chat_id)
+    if not await _require_admin(chat_id, message, lang):
+        return
     try:
         val = int(message.matches[0].group("val"))
     except ValueError:
@@ -342,6 +361,9 @@ async def bassoff_cmd(_, message: Message) -> None:
     chat_id = await target_chat(message)
     if chat_id is None:
         return
+    lang = chat_strings(chat_id)
+    if not await _require_admin(chat_id, message, lang):
+        return
     set_bass(chat_id, BASS_DEFAULT)
     try:
         await message.delete()
@@ -360,6 +382,8 @@ async def effecton_cmd(_, message: Message) -> None:
     if chat_id is None:
         return
     lang = chat_strings(chat_id)
+    if not await _require_admin(chat_id, message, lang):
+        return
     set_enabled(chat_id, True)
     state       = _get(chat_id)
     speed_label = f"{state['speed']}x" if state['speed'] != 1.0 else lang["effects_speed_normal_label"]
@@ -382,6 +406,8 @@ async def effectoff_cmd(_, message: Message) -> None:
     if chat_id is None:
         return
     lang = chat_strings(chat_id)
+    if not await _require_admin(chat_id, message, lang):
+        return
     set_enabled(chat_id, False)
     await rich_send(
         bot, chat_id,

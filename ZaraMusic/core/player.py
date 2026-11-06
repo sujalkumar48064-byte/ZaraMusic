@@ -32,7 +32,8 @@ from ZaraMusic import (
 )
 
 from ZaraMusic.core.queue import (
-    remove_from_queue,
+    peek_current,
+    remove_song,
 )
 
 from ZaraMusic.strings import DEFAULT_LANG, get_string
@@ -95,6 +96,14 @@ def _now_playing_kb(elapsed: float, total: float, chat_id=None, lang=None) -> st
 
 
 _panel_content: dict = {}
+_play_tokens: dict[int, int] = {}
+
+
+def bump_play_token(chat_id: int) -> int:
+    """Invalidate any in-flight play_song() for this chat."""
+    token = _play_tokens.get(int(chat_id), 0) + 1
+    _play_tokens[int(chat_id)] = token
+    return token
 
 
 def get_panel_content(chat_id: int, message_id: int):
@@ -152,10 +161,10 @@ async def _update_progress(
 # AUTO START VC
 # ─────────────────────────────────────────────
 
-def _drop_current(chat_id: int) -> None:
-    song = remove_from_queue(chat_id, 0)
-    if song:
-        delete_file(song.get("file_path", ""))
+def _drop_song(chat_id: int, song: dict) -> None:
+    dropped = remove_song(chat_id, song)
+    if dropped:
+        delete_file(dropped.get("file_path", ""))
 
 
 async def _fail_status(chat_id: int, status_message, content: str) -> None:
@@ -361,6 +370,8 @@ async def play_song(
     if not url:
         return
 
+    token = bump_play_token(chat_id)
+
     loading_text = (
         rich_heading(lang["loading_title"], level=3)
         + rich_kv_table([(lang["kv_song"], rich_esc(short(song['title'])))])
@@ -398,7 +409,7 @@ async def play_song(
 
     except Exception as e:
         try:
-            _drop_current(chat_id)
+            _drop_song(chat_id, song)
         except Exception:
             pass
 
@@ -406,6 +417,12 @@ async def play_song(
             rich_heading(lang["download_failed_title"], level=3)
             + rich_note(f"<code>{rich_esc(e)}</code>"),
         )
+        return
+
+    song["file_path"] = media_path
+
+    if _play_tokens.get(chat_id) != token:
+        delete_file(media_path)
         return
 
     try:
@@ -431,6 +448,10 @@ async def play_song(
 
     song["file_path"] = media_path
 
+    if _play_tokens.get(chat_id) != token:
+        delete_file(media_path)
+        return
+
     # ─────────────────────────────────────────
     # PLAY STREAM
     # ─────────────────────────────────────────
@@ -439,6 +460,10 @@ async def play_song(
 
     # Ensure the voice chat exists before asking PyTgCalls to play.
     # This avoids a long hang when the assistant has no VC-admin rights.
+    if _play_tokens.get(chat_id) != token:
+        delete_file(media_path)
+        return
+
     try:
         active_calls = await asyncio.wait_for(call_py.calls, timeout=10)
     except Exception:
@@ -448,12 +473,16 @@ async def play_song(
         LOGGER.info(f"[VC] Not connected — ensuring VC for {chat_id}")
         if not await _ensure_vc(chat_id, message):
             try:
-                _drop_current(chat_id)
+                _drop_song(chat_id, song)
             except Exception:
                 pass
             return
 
     for attempt in range(2):
+
+        if _play_tokens.get(chat_id) != token:
+            delete_file(media_path)
+            return
 
         try:
 
@@ -505,7 +534,7 @@ async def play_song(
                 continue
 
             try:
-                _drop_current(chat_id)
+                _drop_song(chat_id, song)
             except Exception:
                 pass
 
@@ -525,7 +554,7 @@ async def play_song(
                     continue
 
                 try:
-                    _drop_current(chat_id)
+                    _drop_song(chat_id, song)
                 except Exception:
                     pass
 
@@ -539,7 +568,7 @@ async def play_song(
                 continue
 
             try:
-                _drop_current(chat_id)
+                _drop_song(chat_id, song)
             except Exception:
                 pass
 
@@ -573,7 +602,7 @@ async def play_song(
                     continue
 
                 try:
-                    _drop_current(chat_id)
+                    _drop_song(chat_id, song)
                 except Exception:
                     pass
 
@@ -589,7 +618,7 @@ async def play_song(
                         continue
 
                 try:
-                    _drop_current(chat_id)
+                    _drop_song(chat_id, song)
                 except Exception:
                     pass
 
@@ -602,7 +631,7 @@ async def play_song(
 
             # generic error
             try:
-                _drop_current(chat_id)
+                _drop_song(chat_id, song)
             except Exception:
                 pass
 
@@ -614,6 +643,16 @@ async def play_song(
             return
 
     if not played:
+        return
+
+    if _play_tokens.get(chat_id) != token:
+        # A skip/stop landed while call_py.play() was starting. If nothing is
+        # queued anymore, make sure the stale stream is torn down.
+        if peek_current(chat_id) is None:
+            try:
+                await asyncio.wait_for(call_py.leave_call(chat_id), timeout=10)
+            except Exception:
+                pass
         return
 
     try:

@@ -8,9 +8,9 @@ import config
 from ZaraMusic import bot
 from ZaraMusic.core.channels import target_chat
 from ZaraMusic.core.player import play_song
-from ZaraMusic.core.queue import add_to_queue, peek_current, queue_size
+from ZaraMusic.core.queue import add_to_queue, peek_current, queue_lock, queue_size
 from ZaraMusic.modules.block import group_allowed, user_allowed
-from ZaraMusic.modules.play import BLOCKED_WORDS
+from ZaraMusic.modules.play import BLOCKED_WORDS, _queue_full_content
 from ZaraMusic.utils.assistant import is_assistant_in, try_join_assistant
 from ZaraMusic.utils.db import (
     add_served_chat,
@@ -366,6 +366,13 @@ async def pplay_cmd(_, message: Message) -> None:
     if not args:
         await _reply(message, lang["pl_play_usage_title"], lang["pl_play_usage_note"])
         return
+    if queue_size(chat_id) >= config.QUEUE_LIMIT:
+        await _reply(
+            message,
+            lang["play_queue_full_title"],
+            lang["play_queue_full_note"].format(config.QUEUE_LIMIT),
+        )
+        return
     if not await _db_ok(message, lang):
         return
 
@@ -376,6 +383,19 @@ async def pplay_cmd(_, message: Message) -> None:
     songs = pl.get("songs", [])
     if not songs:
         await _reply(message, lang["pl_empty_title"], lang["pl_empty_note"].format(rich_esc(pl["name"])))
+        return
+
+    eligible = [
+        s for s in songs
+        if (s.get("duration_seconds") or iso_to_sec(s.get("duration", "0:00")))
+        <= config.MAX_DURATION_SECONDS
+    ]
+    if not eligible:
+        await _reply(
+            message,
+            lang["play_song_too_long_title"],
+            lang["help_play_max_duration_val"].format(config.MAX_DURATION_SECONDS // 60),
+        )
         return
 
     try:
@@ -410,37 +430,49 @@ async def pplay_cmd(_, message: Message) -> None:
     req    = message.from_user.first_name or "Unknown"
     req_id = message.from_user.id
 
-    first_was_empty = queue_size(chat_id) == 0
+    added = []
+    async with queue_lock(chat_id):
+        first_was_empty = queue_size(chat_id) == 0
 
-    for s in songs:
-        add_to_queue(chat_id, {
-            "url":              s["url"],
-            "title":            s.get("title", "Unknown"),
-            "duration":         s.get("duration", "?"),
-            "duration_seconds": s.get("duration_seconds", 0),
-            "requester":        req,
-            "requester_id":     req_id,
-            "thumbnail":        s.get("thumbnail", ""),
-            "video":            False,
-        })
+        for s in eligible:
+            pos = add_to_queue(chat_id, {
+                "url":              s["url"],
+                "title":            s.get("title", "Unknown"),
+                "duration":         s.get("duration", "?"),
+                "duration_seconds": s.get("duration_seconds", 0),
+                "requester":        req,
+                "requester_id":     req_id,
+                "thumbnail":        s.get("thumbnail", ""),
+                "video":            False,
+            })
+            if not pos:
+                break
+            added.append(s)
+
+        first_song = peek_current(chat_id) if first_was_empty else None
+
+    if not added:
+        await rich_edit(pm, _queue_full_content(lang))
+        return
 
     rows = [
         (lang["pl_kv_playlist"], _code(pl["name"])),
-        (lang["kv_songs"],       _code(len(songs))),
-        (lang["kv_first"],       _code(short(songs[0].get("title", "?")))),
+        (lang["kv_songs"],       _code(len(added))),
+        (lang["kv_first"],       _code(short(added[0].get("title", "?")))),
     ]
-    if len(songs) > 1:
-        rows.append((lang["kv_next"], _code(short(songs[1].get("title", "?")))))
+    if len(added) > 1:
+        rows.append((lang["kv_next"], _code(short(added[1].get("title", "?")))))
+
+    if len(added) < len(songs):
+        rows.append((lang["kv_max"], _code(config.QUEUE_LIMIT)))
 
     await rich_send(
         bot, chat_id,
         rich_heading(lang["play_playlist_added_title"], level=3) + rich_kv_table(rows),
     )
 
-    if first_was_empty:
-        first_song = peek_current(chat_id)
-        if first_song:
-            await play_song(chat_id, pm, first_song)
+    if first_was_empty and first_song:
+        await play_song(chat_id, pm, first_song)
     else:
         try:
             await pm.delete()

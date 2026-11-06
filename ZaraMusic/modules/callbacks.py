@@ -7,8 +7,8 @@ from pyrogram.types import CallbackQuery
 import config
 from ZaraMusic import bot, call_py
 from ZaraMusic.core.call import leave_vc
-from ZaraMusic.core.player import play_song
-from ZaraMusic.core.queue import clear_queue, peek_current, pop_current, queue_lock, queue_size
+from ZaraMusic.core.player import bump_play_token, play_song
+from ZaraMusic.core.queue import clear_upcoming, peek_current, pop_current, queue_lock
 from ZaraMusic.utils.buttons import (
     help_back_kb,
     help_menu_home_kb,
@@ -164,12 +164,14 @@ async def on_callback(client, cbq: CallbackQuery) -> None:
 
     # ── SKIP ────────────────────────────────────────────────────────────
     elif data == "skip":
-        if not queue_size(chat_id):
+        async with queue_lock(chat_id):
+            skipped = pop_current(chat_id)
+
+        if not skipped:
             await cbq.answer(lang["cb_queue_empty_toast"], show_alert=True)
             return
 
-        async with queue_lock(chat_id):
-            skipped = pop_current(chat_id)
+        bump_play_token(chat_id)
 
         try:
             delete_file(skipped.get("file_path", ""))
@@ -227,7 +229,25 @@ async def on_callback(client, cbq: CallbackQuery) -> None:
 
     # ── CLEAR ────────────────────────────────────────────────────────────
     elif data == "clear":
-        clear_queue(chat_id)
+        try:
+            from ZaraMusic.core.autoplay import reset_autoplay_state
+            reset_autoplay_state(chat_id)
+        except Exception:
+            pass
+
+        async with queue_lock(chat_id):
+            cleared = clear_upcoming(chat_id)
+
+        if not cleared:
+            await cbq.answer(lang["cb_queue_empty_toast"], show_alert=True)
+            return
+
+        for song in cleared:
+            try:
+                delete_file(song.get("file_path", ""))
+            except Exception:
+                pass
+
         await cbq.answer(lang["cb_queue_cleared_toast"])
         await rich_edit(
             cbq.message,

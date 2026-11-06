@@ -7,7 +7,7 @@ import config
 from ZaraMusic import bot
 from ZaraMusic.core.channels import target_chat
 from ZaraMusic.core.player import play_song
-from ZaraMusic.core.queue import push_front
+from ZaraMusic.core.queue import push_front, queue_lock
 from ZaraMusic.modules.block import group_allowed, user_allowed
 from ZaraMusic.modules.play import BLOCKED_WORDS
 from ZaraMusic.utils.assistant import is_assistant_in, try_join_assistant
@@ -148,5 +148,6 @@ async def playforce_cmd(_, message: Message) -> None:
         pass
 
     # Forced song takes slot 0; the old song + rest of the queue stay behind it.
-    push_front(chat_id, song)
+    async with queue_lock(chat_id):
+        push_front(chat_id, song)
     await play_song(chat_id, pm, song)

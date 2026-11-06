@@ -13,6 +13,7 @@ from ZaraMusic.utils.db import is_thumbnail_enabled
 from ZaraMusic.utils.thumbnail import thumbnail_html
 from ZaraMusic.utils.formatters import fmt_time, parse_dur, short
 from ZaraMusic.utils.language import chat_strings
+from ZaraMusic.utils.permissions import is_user_authorized
 from richgram import (
     rich_edit,
     rich_esc,
@@ -69,7 +70,7 @@ async def _seek_to(chat_id: int, target_sec: int, message: Message) -> None:
     if is_video:
         stream_kwargs = dict(
             audio_parameters=AudioQuality.HIGH,
-            video_parameters=VideoQuality.HD_720p,
+            video_parameters=VideoQuality.SD_480p,
             ffmpeg_parameters=f"-ss {target_sec}",
         )
     else:
@@ -146,6 +147,15 @@ async def seek_cmd(_, message: Message) -> None:
     if chat_id is None:
         return
     lang = chat_strings(chat_id)
+
+    if not await is_user_authorized(message):
+        await rich_send(
+            bot, chat_id,
+            rich_heading(lang["admin_only_title"], level=3)
+            + rich_note(lang["admin_only_note"]),
+        )
+        return
+
     song    = peek_current(chat_id)
 
     if not song:
@@ -201,6 +211,15 @@ async def seekback_cmd(_, message: Message) -> None:
     if chat_id is None:
         return
     lang = chat_strings(chat_id)
+
+    if not await is_user_authorized(message):
+        await rich_send(
+            bot, chat_id,
+            rich_heading(lang["admin_only_title"], level=3)
+            + rich_note(lang["admin_only_note"]),
+        )
+        return
+
     song    = peek_current(chat_id)
 
     if not song:

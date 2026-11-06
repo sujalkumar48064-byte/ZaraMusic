@@ -109,6 +109,8 @@ play_playlist_added_title:  "❍ ᴘʟᴀʏʟɪsᴛ ᴀᴅᴅᴇᴅ"
 play_song_not_found_title:  "❍ sᴏɴɢ ɴᴏᴛ ғᴏᴜɴᴅ"
 play_song_too_long_title:   "❍ sᴏɴɢ ᴛᴏᴏ ʟᴏɴɢ"
 play_added_queue_title:     "❍ ᴀᴅᴅᴇᴅ ᴛᴏ ǫᴜᴇᴜᴇ"
+play_queue_full_title:      "❍ ǫᴜᴇᴜᴇ ɪs ғᴜʟʟ"
+play_queue_full_note:       "ᴛʜᴇ ǫᴜᴇᴜᴇ ʟɪᴍɪᴛ ɪs {0} sᴏɴɢs. ᴡᴀɪᴛ ғᴏʀ ᴀ sᴏɴɢ ᴛᴏ ғɪɴɪsʜ ᴏʀ ᴜsᴇ /clear."
 
 # ── /skip ─────────────────────────────────────────────────────────────────────
 skip_empty_note:      "ɴᴏ sᴏɴɢs ᴛᴏ sᴋɪᴘ."
@@ -120,7 +122,7 @@ skip_queue_empty_note: "ǫᴜᴇᴜᴇ ɪs ɴᴏᴡ ᴇᴍᴘᴛʏ"
 stop_stopped_title: "⏹ ᴘʟᴀʏʙᴀᴄᴋ sᴛᴏᴘᴘᴇᴅ"
 stop_stopped_note:  "ǫᴜᴇᴜᴇ ᴄʟᴇᴀʀᴇᴅ · ʟᴇғᴛ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ"
 clear_cleared_title: "🧹 ǫᴜᴇᴜᴇ ᴄʟᴇᴀʀᴇᴅ"
-clear_cleared_note:  "ᴀʟʟ sᴏɴɢs ʀᴇᴍᴏᴠᴇᴅ"
+clear_cleared_note:  "ᴜᴘᴄᴏᴍɪɴɢ sᴏɴɢs ʀᴇᴍᴏᴠᴇᴅ"
 reboot_title: "🔄 ᴄʜᴀᴛ ʀᴇʙᴏᴏᴛᴇᴅ"
 reboot_note:  "ᴀʟʟ sᴛᴀᴛᴇs ʀᴇsᴇᴛ"
 

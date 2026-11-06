@@ -16,6 +16,7 @@ from ZaraMusic.utils.buttons import skip_clear_kb
 from ZaraMusic.utils.assistant import is_assistant_in, try_join_assistant
 from ZaraMusic.utils.db import add_served_chat, add_served_user
 from ZaraMusic.utils.formatters import fmt_time, iso_to_human, iso_to_sec, short
+from ZaraMusic.utils.helpers import delete_file
 from ZaraMusic.utils.language import chat_strings
 from richgram import (
     rich_edit,
@@ -48,6 +49,14 @@ def _db_track(chat_id: int, user_id: int) -> None:
             add_served_user(user_id)
     except Exception:
         pass
+
+
+def _queue_full_content(lang: dict) -> str:
+    return (
+        rich_heading(lang["play_queue_full_title"], level=3)
+        + rich_kv_table([(lang["kv_max"], f"<code>{config.QUEUE_LIMIT}</code>")])
+        + rich_note(lang["play_queue_full_note"].format(config.QUEUE_LIMIT))
+    )
 
 
 # ── Cooldown handler ───────────────────────────────────────────────────────────
@@ -87,17 +96,36 @@ async def play_handler(_, message: Message) -> None:
     if message.reply_to_message and (
         message.reply_to_message.audio or message.reply_to_message.video
     ):
+        if queue_size(chat_id) >= config.QUEUE_LIMIT:
+            await rich_send(bot, chat_id, _queue_full_content(lang))
+            return
+
         pm = await rich_send(bot, chat_id, rich_heading(lang["play_processing_media"], level=3))
 
         orig  = message.reply_to_message
         fresh = await bot.get_messages(orig.chat.id, orig.id)
+        if fresh is None or not (fresh.video or fresh.audio):
+            await rich_edit(pm, rich_heading(lang["play_song_not_found_title"], level=3))
+            return
+
         media = fresh.video or fresh.audio
 
-        if fresh.audio and getattr(fresh.audio, "file_size", 0) > 100 * 1024 * 1024:
+        if getattr(media, "file_size", 0) > 100 * 1024 * 1024:
             await rich_edit(
                 pm,
                 rich_heading(lang["play_file_too_large_title"], level=3)
                 + rich_kv_table([(lang["kv_max"], "<code>100 MB</code>")]),
+            )
+            return
+
+        if (media.duration or 0) > config.MAX_DURATION_SECONDS:
+            await rich_edit(
+                pm,
+                rich_heading(lang["play_song_too_long_title"], level=3)
+                + rich_kv_table([
+                    (lang["kv_dur"], f"<code>{fmt_time(media.duration)}</code>"),
+                    (lang["kv_max"], f"<code>{config.MAX_DURATION_SECONDS // 60} min</code>"),
+                ]),
             )
             return
 
@@ -129,10 +157,19 @@ async def play_handler(_, message: Message) -> None:
             "requester":        message.from_user.first_name if message.from_user else "Unknown",
             "requester_id":     user_id,
             "thumbnail":        thumb,
+            "video":            bool(fresh.video),
         }
 
         async with queue_lock(chat_id):
             pos = add_to_queue(chat_id, song)
+
+        if pos == 0:
+            try:
+                delete_file(fp)
+            except Exception:
+                pass
+            await rich_edit(pm, _queue_full_content(lang))
+            return
 
         if pos == 1:
             await play_song(chat_id, pm, song)
@@ -203,6 +240,10 @@ async def _process_play(message: Message, query: str, video: bool = False, chat_
 
     pm = await rich_send(bot, chat_id, rich_heading(lang["play_processing_title"], level=3))
 
+    if queue_size(chat_id) >= config.QUEUE_LIMIT:
+        await rich_edit(pm, _queue_full_content(lang))
+        return
+
     # Assistant check — uses utils/assistant.py
     status = await is_assistant_in(chat_id)
 
@@ -249,14 +290,29 @@ async def _process_play(message: Message, query: str, video: bool = False, chat_
             await rich_edit(pm, rich_heading(lang["play_playlist_empty_title"], level=3))
             return
 
+        eligible = [
+            item for item in items
+            if iso_to_sec(item.get("duration", "PT0S")) <= config.MAX_DURATION_SECONDS
+        ]
+        if not eligible:
+            await rich_edit(
+                pm,
+                rich_heading(lang["play_song_too_long_title"], level=3)
+                + rich_kv_table([
+                    (lang["kv_max"], f"<code>{config.MAX_DURATION_SECONDS // 60} min</code>"),
+                ]),
+            )
+            return
+
         req    = message.from_user.first_name if message.from_user else "Unknown"
         req_id = message.from_user.id         if message.from_user else 0
 
+        added = []
         async with queue_lock(chat_id):
             first_was_empty = queue_size(chat_id) == 0
 
-            for item in items:
-                add_to_queue(chat_id, {
+            for item in eligible:
+                pos = add_to_queue(chat_id, {
                     "url":              item["link"],
                     "title":            item["title"],
                     "duration":         iso_to_human(item["duration"]),
@@ -265,23 +321,33 @@ async def _process_play(message: Message, query: str, video: bool = False, chat_
                     "requester_id":     req_id,
                     "thumbnail":        item["thumbnail"],
                 })
+                if not pos:
+                    break
+                added.append(item)
+
+            first_song = peek_current(chat_id) if first_was_empty else None
+
+        if not added:
+            await rich_edit(pm, _queue_full_content(lang))
+            return
 
         rows = [
-            (lang["kv_songs"], f"<code>{len(items)}</code>"),
-            (lang["kv_first"], f"<code>{rich_esc(short(items[0]['title']))}</code>"),
+            (lang["kv_songs"], f"<code>{len(added)}</code>"),
+            (lang["kv_first"], f"<code>{rich_esc(short(added[0]['title']))}</code>"),
         ]
-        if len(items) > 1:
-            rows.append((lang["kv_next"], f"<code>{rich_esc(short(items[1]['title']))}</code>"))
+        if len(added) > 1:
+            rows.append((lang["kv_next"], f"<code>{rich_esc(short(added[1]['title']))}</code>"))
+
+        if len(added) < len(items):
+            rows.append((lang["kv_max"], f"<code>{config.QUEUE_LIMIT}</code>"))
 
         await rich_send(
             bot, chat_id,
             rich_heading(lang["play_playlist_added_title"], level=3) + rich_kv_table(rows),
         )
 
-        if first_was_empty:
-            first_song = peek_current(chat_id)
-            if first_song:
-                await play_song(chat_id, pm, first_song)
+        if first_was_empty and first_song:
+            await play_song(chat_id, pm, first_song)
         else:
             await pm.delete()
         return
@@ -322,6 +388,10 @@ async def _process_play(message: Message, query: str, video: bool = False, chat_
 
     async with queue_lock(chat_id):
         pos = add_to_queue(chat_id, song)
+
+    if pos == 0:
+        await rich_edit(pm, _queue_full_content(lang))
+        return
 
     if pos == 1:
         await play_song(chat_id, pm, song)

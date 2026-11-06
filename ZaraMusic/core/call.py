@@ -20,6 +20,12 @@ async def leave_vc(chat_id: int) -> None:
     Leave voice chat and clean the queue (AutoPlay's ON/OFF setting is kept).
     """
 
+    try:
+        from ZaraMusic.core.player import bump_play_token
+        bump_play_token(chat_id)
+    except Exception:
+        pass
+
     # Drop pending autoplay suggestions, but keep the ON/OFF setting: once
     # an admin turns AutoPlay on it stays on until they turn it off.
     try:
@@ -64,6 +70,12 @@ async def on_call_left(_: object, update: ChatUpdate) -> None:
 
     chat_id = update.chat_id
     LOGGER.warning(f"[VC] Call ended externally in {chat_id} ({update.status}) — clearing state")
+
+    try:
+        from ZaraMusic.core.player import bump_play_token
+        bump_play_token(chat_id)
+    except Exception:
+        pass
 
     for song in clear_queue(chat_id):
         try:

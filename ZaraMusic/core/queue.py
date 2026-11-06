@@ -2,6 +2,8 @@
 
 import asyncio
 
+import config
+
 # chat_id -> queue list
 chat_queues: dict[int, list] = {}
 _queue_locks: dict[int, asyncio.Lock] = {}
@@ -27,6 +29,8 @@ def get_queue(chat_id: int) -> list:
 
 def add_to_queue(chat_id: int, song: dict) -> int:
     queue = chat_queues.setdefault(chat_id, [])
+    if len(queue) >= config.QUEUE_LIMIT:
+        return 0
     queue.append(song)
     return len(queue)
 
@@ -58,6 +62,20 @@ def remove_from_queue(chat_id: int, index: int) -> dict | None:
     return queue.pop(index)
 
 
+def remove_song(chat_id: int, song: dict) -> dict | None:
+    """Remove a specific queued song by identity, never the current song blindly."""
+    queue = chat_queues.get(chat_id)
+
+    if not queue:
+        return None
+
+    for index, item in enumerate(queue):
+        if item is song:
+            return queue.pop(index)
+
+    return None
+
+
 def peek_current(chat_id: int) -> dict | None:
     queue = chat_queues.get(chat_id)
 
@@ -78,6 +96,18 @@ def peek_next(chat_id: int) -> dict | None:
 
 def clear_queue(chat_id: int) -> list:
     return chat_queues.pop(chat_id, [])
+
+
+def clear_upcoming(chat_id: int) -> list:
+    """Drop everything after the currently playing song and keep the current one."""
+    queue = chat_queues.get(chat_id)
+
+    if not queue or len(queue) < 2:
+        return []
+
+    removed = queue[1:]
+    del queue[1:]
+    return removed
 
 
 def queue_size(chat_id: int) -> int:

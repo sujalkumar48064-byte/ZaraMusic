@@ -23,14 +23,17 @@ async def is_user_authorized(obj: Union[Message, CallbackQuery]) -> bool:
     else:
         return False
 
-    if not user:
-        return False
-
-    if user.id in TRUSTED_IDS:
+    if user and user.id in TRUSTED_IDS:
         return True
 
     if message.chat.type not in (ChatType.SUPERGROUP, ChatType.GROUP, ChatType.CHANNEL):
         return False
+
+    if not user:
+        # Anonymous group admins and channel posts have no from_user. Telegram
+        # identifies them with sender_chat, which is the chat itself.
+        sender_chat = getattr(message, "sender_chat", None)
+        return bool(sender_chat and sender_chat.id == message.chat.id)
 
     try:
         member = await message._client.get_chat_member(message.chat.id, user.id)
