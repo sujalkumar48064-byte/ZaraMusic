@@ -62,6 +62,14 @@ DOWNLOAD_DIR      = "downloads"
 YT_TOKEN_TIMEOUT  = 10    # seconds — fetch download token
 YT_STREAM_TIMEOUT = 900   # 15 min  — download / stream long songs
 
+# ── Performance / multi-group safety ─────────────────────────────────────────
+MAX_CONCURRENT_DOWNLOADS = int(os.getenv("MAX_CONCURRENT_DOWNLOADS", "3"))
+SEARCH_TIMEOUT           = int(os.getenv("SEARCH_TIMEOUT", "12"))
+DOWNLOAD_TIMEOUT         = int(os.getenv("DOWNLOAD_TIMEOUT", "180"))
+PLAY_TIMEOUT             = int(os.getenv("PLAY_TIMEOUT", "75"))
+BOT_WORKERS              = int(os.getenv("BOT_WORKERS", "32"))
+VIDEO_FPS                = int(os.getenv("VIDEO_FPS", "24"))
+
 # ── NSFW Moderation API ─────────────────────────────────────────────────────
 #NSFW_API_URL = os.getenv("NSFW_API_URL", "https://ai-moderation-api-khyr.onrender.com")
 #NSFW_API_KEY = os.getenv("NSFW_API_KEY", "nsfwBad")

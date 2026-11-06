@@ -1,7 +1,24 @@
 
 
+import asyncio
+
 # chat_id -> queue list
 chat_queues: dict[int, list] = {}
+_queue_locks: dict[int, asyncio.Lock] = {}
+
+
+def queue_lock(chat_id: int) -> asyncio.Lock:
+    return _queue_locks.setdefault(int(chat_id), asyncio.Lock())
+
+
+def is_file_in_use(path: str) -> bool:
+    if not path:
+        return False
+    for queue in chat_queues.values():
+        for song in queue:
+            if song.get("file_path") == path or song.get("url") == path:
+                return True
+    return False
 
 
 def get_queue(chat_id: int) -> list:

@@ -5,7 +5,7 @@ from pyrogram.types import Message
 from ZaraMusic import bot
 from ZaraMusic.core.channels import target_chat
 from ZaraMusic.core.player import play_song
-from ZaraMusic.core.queue import peek_current, pop_current, queue_size
+from ZaraMusic.core.queue import peek_current, pop_current, queue_lock, queue_size
 from ZaraMusic.modules.block import group_allowed, user_allowed
 from ZaraMusic.utils.formatters import short
 from ZaraMusic.utils.helpers import delete_file
@@ -52,14 +52,14 @@ async def skip_cmd(_, message: Message) -> None:
 
     sm = await rich_send(bot, chat_id, rich_heading(lang["skip_skipping_title"], level=3))
 
-    skipped = pop_current(chat_id)
+    async with queue_lock(chat_id):
+        skipped = pop_current(chat_id)
+        nxt = peek_current(chat_id)
 
     try:
         delete_file(skipped.get("file_path", ""))
     except Exception:
         pass
-
-    nxt = peek_current(chat_id)
 
     if not nxt:
         # queue is empty: let AutoPlay (if ON) add one related song

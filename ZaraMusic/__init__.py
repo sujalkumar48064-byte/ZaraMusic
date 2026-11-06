@@ -28,6 +28,7 @@ bot = Client(
     bot_token=config.BOT_TOKEN,
     parse_mode=ParseMode.DEFAULT,
     in_memory=True,
+    workers=config.BOT_WORKERS,
 )
 
 # ── Assistant (userbot) for voice chats ───────────────────────────────────────

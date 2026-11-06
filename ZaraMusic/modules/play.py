@@ -10,7 +10,7 @@ import config
 from ZaraMusic import bot
 from ZaraMusic.core.channels import target_chat
 from ZaraMusic.core.player import play_song
-from ZaraMusic.core.queue import add_to_queue, peek_current, queue_size
+from ZaraMusic.core.queue import add_to_queue, peek_current, queue_lock, queue_size
 from ZaraMusic.modules.block import group_allowed, user_allowed
 from ZaraMusic.utils.buttons import skip_clear_kb
 from ZaraMusic.utils.assistant import is_assistant_in, try_join_assistant
@@ -131,8 +131,21 @@ async def play_handler(_, message: Message) -> None:
             "thumbnail":        thumb,
         }
 
-        add_to_queue(chat_id, song)
-        await play_song(chat_id, pm, song)
+        async with queue_lock(chat_id):
+            pos = add_to_queue(chat_id, song)
+
+        if pos == 1:
+            await play_song(chat_id, pm, song)
+        else:
+            await rich_edit(
+                pm,
+                rich_heading(lang["play_added_queue_title"], level=3)
+                + rich_kv_table([
+                    (lang["kv_title"], f"<code>{rich_esc(short(song['title']))}</code>"),
+                    (lang["kv_pos"], f"<code>#{pos - 1}</code>"),
+                ])
+                + skip_clear_kb(lang),
+            )
         return
 
     # ── Text query ─────────────────────────────────────────────────────────────
@@ -239,18 +252,19 @@ async def _process_play(message: Message, query: str, video: bool = False, chat_
         req    = message.from_user.first_name if message.from_user else "Unknown"
         req_id = message.from_user.id         if message.from_user else 0
 
-        first_was_empty = queue_size(chat_id) == 0
+        async with queue_lock(chat_id):
+            first_was_empty = queue_size(chat_id) == 0
 
-        for item in items:
-            add_to_queue(chat_id, {
-                "url":              item["link"],
-                "title":            item["title"],
-                "duration":         iso_to_human(item["duration"]),
-                "duration_seconds": iso_to_sec(item["duration"]),
-                "requester":        req,
-                "requester_id":     req_id,
-                "thumbnail":        item["thumbnail"],
-            })
+            for item in items:
+                add_to_queue(chat_id, {
+                    "url":              item["link"],
+                    "title":            item["title"],
+                    "duration":         iso_to_human(item["duration"]),
+                    "duration_seconds": iso_to_sec(item["duration"]),
+                    "requester":        req,
+                    "requester_id":     req_id,
+                    "thumbnail":        item["thumbnail"],
+                })
 
         rows = [
             (lang["kv_songs"], f"<code>{len(items)}</code>"),
@@ -306,7 +320,8 @@ async def _process_play(message: Message, query: str, video: bool = False, chat_
         "video":            video,
     }
 
-    pos = add_to_queue(chat_id, song)
+    async with queue_lock(chat_id):
+        pos = add_to_queue(chat_id, song)
 
     if pos == 1:
         await play_song(chat_id, pm, song)

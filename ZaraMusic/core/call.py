@@ -9,7 +9,7 @@ from pytgcalls.types import (
 )
 
 from ZaraMusic import LOGGER, bot, call_py
-from ZaraMusic.core.queue import clear_queue, peek_current, pop_current, queue_size
+from ZaraMusic.core.queue import clear_queue, peek_current, pop_current, queue_lock, queue_size
 from ZaraMusic.utils.helpers import delete_file
 from ZaraMusic.utils.language import chat_strings
 from richgram import rich_esc, rich_heading, rich_kv_table, rich_note, rich_send
@@ -100,7 +100,9 @@ async def on_stream_end(_: object, update: StreamEnded) -> None:
     lang = chat_strings(chat_id)
 
     # Remove finished song
-    done = pop_current(chat_id)
+    async with queue_lock(chat_id):
+        done = pop_current(chat_id)
+        nxt = peek_current(chat_id)
 
     if done:
         await asyncio.sleep(1)
@@ -110,8 +112,6 @@ async def on_stream_end(_: object, update: StreamEnded) -> None:
 
         except Exception:
             pass
-
-    nxt = peek_current(chat_id)
 
     # ── Queue is empty: let AutoPlay try to add ONE related song ────────────────
     if not nxt:

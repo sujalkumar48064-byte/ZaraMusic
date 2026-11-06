@@ -20,6 +20,15 @@ logger = logging.getLogger(__name__)
 
 _file_cache: dict[str, str] = {}
 _video_cache: dict[str, str] = {}
+_download_locks: dict[str, asyncio.Lock] = {}
+_download_sem: Optional[asyncio.Semaphore] = None
+
+
+def _download_semaphore() -> asyncio.Semaphore:
+    global _download_sem
+    if _download_sem is None:
+        _download_sem = asyncio.Semaphore(max(1, MAX_CONCURRENT_DOWNLOADS))
+    return _download_sem
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -138,7 +147,7 @@ async def _download_via_api(video_id: str, video: bool) -> Optional[str]:
             async with session.get(
                 f"{API_URL}/download",
                 params={"url": video_id, "type": "video" if video else "audio", "api_key": API_KEY},
-                timeout=aiohttp.ClientTimeout(total=YT_STREAM_TIMEOUT),
+                timeout=aiohttp.ClientTimeout(total=min(YT_STREAM_TIMEOUT, 180)),
             ) as resp:
                 if resp.status != 200:
                     logger.warning(f"[api] Download failed: HTTP {resp.status}")
@@ -203,7 +212,9 @@ def _pick_audio(data: dict):
 
     m4a = [f for f in formats if "m4a" in kind_of(f) or "mp4" in kind_of(f)]
     webm = [f for f in formats if "webm" in kind_of(f)]
-    best = max(m4a or webm or formats, key=_bitrate)
+    pool = m4a or webm or formats
+    target = 128000
+    best = min(pool, key=lambda f: abs(_bitrate(f) - target))
     url = best.get("url")
     if not url:
         return None
@@ -273,7 +284,7 @@ async def _download_url(session, url: str, path: str, attempts: int = 2) -> Opti
     for attempt in range(1, attempts + 1):
         try:
             async with session.get(
-                url, timeout=aiohttp.ClientTimeout(total=min(YT_STREAM_TIMEOUT, 120))
+                url, timeout=aiohttp.ClientTimeout(total=min(YT_STREAM_TIMEOUT, 180))
             ) as resp:
                 if resp.status != 200:
                     logger.warning(f"[free] HTTP {resp.status} (attempt {attempt}/{attempts})")
@@ -404,7 +415,7 @@ async def _download_via_multimp3(video_id: str) -> Optional[str]:
                     async with session.post(
                         "https://multimp3.vercel.app/api/download",
                         json=payload,
-                        timeout=aiohttp.ClientTimeout(total=YT_STREAM_TIMEOUT),
+                        timeout=aiohttp.ClientTimeout(total=min(YT_STREAM_TIMEOUT, 120)),
                     ) as resp:
                         if resp.status != 200:
                             logger.warning(
@@ -531,7 +542,7 @@ async def _download_ytdlp(video_id: str, video: bool) -> Optional[str]:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )
-        _, err = await asyncio.wait_for(proc.communicate(), timeout=YT_STREAM_TIMEOUT)
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=min(YT_STREAM_TIMEOUT, 180))
         if proc.returncode != 0:
             tail = (err or b"").decode(errors="ignore").strip().splitlines()[-1:] or [""]
             logger.warning(f"[yt-dlp] failed for {video_id} (exit {proc.returncode}): {tail[0]}")
@@ -553,16 +564,7 @@ async def _download_ytdlp(video_id: str, video: bool) -> Optional[str]:
             _cleanup(cookie_copy)
 
 
-async def _download(link: str, video: bool) -> Optional[str]:
-    video_id = _extract_video_id(link)
-    if not _ID_RE.match(video_id or ""):
-        return None
-
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    have = _cached(video_id, video)
-    if have:
-        return have
-
+async def _download_uncached(video_id: str, video: bool) -> Optional[str]:
     api_set = bool(API_URL and API_KEY)
     cookie_ready = bool(USE_COOKIES and _get_cookie_file())
 
@@ -590,6 +592,30 @@ async def _download(link: str, video: bool) -> Optional[str]:
         logger.info(f"[yt] free fallback failed, trying API for {video_id}")
         return await _download_via_api(video_id, video)
     return None
+
+
+async def _download(link: str, video: bool) -> Optional[str]:
+    video_id = _extract_video_id(link)
+    if not _ID_RE.match(video_id or ""):
+        return None
+
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    key = f"{video_id}:{int(bool(video))}"
+    lock = _download_locks.setdefault(key, asyncio.Lock())
+
+    async with lock:
+        have = _cached(video_id, video)
+        if have:
+            return have
+        async with _download_semaphore():
+            result = await _download_uncached(video_id, video)
+
+    if len(_download_locks) > 512:
+        for k, item in list(_download_locks.items()):
+            if not item.locked():
+                _download_locks.pop(k, None)
+
+    return result
 
 
 async def _to_mp3(path: str) -> str:
@@ -755,7 +781,7 @@ async def search_yt(query: str):
 
     # ── Playlist ──────────────────────────────────────────────────────────────
     if "playlist?list=" in query or "&list=" in query:
-        pl   = await Playlist.get(query)
+        pl   = await asyncio.wait_for(Playlist.get(query), timeout=SEARCH_TIMEOUT)
         vids = pl.get("videos") or []
         if not vids:
             raise Exception("ᴩʟᴀʏʟɪsᴛ ɪs ᴇᴍᴩᴛʏ")
@@ -792,14 +818,17 @@ async def search_yt(query: str):
         direct_id = query.strip()
 
     if direct_id:
-        meta = await _video_meta(direct_id)
+        try:
+            meta = await asyncio.wait_for(_video_meta(direct_id), timeout=SEARCH_TIMEOUT)
+        except Exception:
+            meta = None
         if meta:
             return meta
 
     # ── Single video search ───────────────────────────────────────────────────
     try:
         search  = VideosSearch(query, limit=1)
-        results = await search.next()
+        results = await asyncio.wait_for(search.next(), timeout=SEARCH_TIMEOUT)
         lst     = results.get("result", [])
     except Exception as e:
         logger.warning(f"[yt] search failed: {e}")

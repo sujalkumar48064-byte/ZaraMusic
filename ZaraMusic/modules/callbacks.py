@@ -8,7 +8,7 @@ import config
 from ZaraMusic import bot, call_py
 from ZaraMusic.core.call import leave_vc
 from ZaraMusic.core.player import play_song
-from ZaraMusic.core.queue import clear_queue, peek_current, pop_current, queue_size
+from ZaraMusic.core.queue import clear_queue, peek_current, pop_current, queue_lock, queue_size
 from ZaraMusic.utils.buttons import (
     help_back_kb,
     help_menu_home_kb,
@@ -168,7 +168,8 @@ async def on_callback(client, cbq: CallbackQuery) -> None:
             await cbq.answer(lang["cb_queue_empty_toast"], show_alert=True)
             return
 
-        skipped = pop_current(chat_id)
+        async with queue_lock(chat_id):
+            skipped = pop_current(chat_id)
 
         try:
             delete_file(skipped.get("file_path", ""))

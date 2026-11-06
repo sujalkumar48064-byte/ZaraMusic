@@ -14,7 +14,7 @@ from pytgcalls.exceptions import NoActiveGroupCall
 from pytgcalls.types import (
     AudioQuality,
     MediaStream,
-    VideoQuality,
+    VideoParameters,
     ChatUpdate,
     StreamEnded,
     GroupCallConfig,
@@ -39,6 +39,7 @@ from ZaraMusic.strings import DEFAULT_LANG, get_string
 from ZaraMusic.utils.buttons import player_controls_kb, support_updates_pills
 from ZaraMusic.utils.db import is_thumbnail_enabled
 
+from ZaraMusic.utils.helpers import delete_file
 from ZaraMusic.utils.formatters import (
     parse_dur,
     progress_bar,
@@ -106,11 +107,15 @@ def get_panel_content(chat_id: int, message_id: int):
 
 
 _closed_panels: set = set()
+_progress_tasks: dict = {}
 
 
 def mark_panel_closed(chat_id: int, message_id: int) -> None:
     _closed_panels.add((chat_id, message_id))
     _panel_content.pop((chat_id, message_id), None)
+    task = _progress_tasks.pop((chat_id, message_id), None)
+    if task and not task.done():
+        task.cancel()
 
 
 async def _update_progress(
@@ -146,6 +151,12 @@ async def _update_progress(
 # ─────────────────────────────────────────────
 # AUTO START VC
 # ─────────────────────────────────────────────
+
+def _drop_current(chat_id: int) -> None:
+    song = remove_from_queue(chat_id, 0)
+    if song:
+        delete_file(song.get("file_path", ""))
+
 
 async def _fail_status(chat_id: int, status_message, content: str) -> None:
 
@@ -261,9 +272,9 @@ async def _ensure_vc(chat_id: int, status_message=None) -> bool:
     last_err = None
 
     try:
-        await _create_vc(chat_id)
+        await asyncio.wait_for(_create_vc(chat_id), timeout=25)
         LOGGER.info(f"[VC] Created in {chat_id}")
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
         return True
     except Exception as e:
         last_err = e
@@ -283,11 +294,22 @@ async def _ensure_vc(chat_id: int, status_message=None) -> bool:
         )
     )
 
-    if need_fix and await _ensure_assistant_admin(chat_id):
+    if need_fix:
         try:
-            await _create_vc(chat_id)
+            fixed = await asyncio.wait_for(
+                _ensure_assistant_admin(chat_id),
+                timeout=35,
+            )
+        except Exception:
+            fixed = False
+    else:
+        fixed = False
+
+    if fixed:
+        try:
+            await asyncio.wait_for(_create_vc(chat_id), timeout=25)
             LOGGER.info(f"[VC] Created in {chat_id} after assistant setup")
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
             return True
         except Exception as e:
             last_err = e
@@ -308,11 +330,16 @@ async def _ensure_vc(chat_id: int, status_message=None) -> bool:
         )
         return False
 
+    err_text = (
+        "Voice chat start timed out"
+        if isinstance(last_err, asyncio.TimeoutError)
+        else str(last_err)
+    )
     await _fail_status(
         chat_id,
         status_message,
         rich_heading(lang["vc_start_failed_title"], level=3)
-        + rich_note(f"<code>{rich_esc(last_err)}</code>"),
+        + rich_note(f"<code>{rich_esc(err_text)}</code>"),
     )
     return False
 
@@ -371,7 +398,7 @@ async def play_song(
 
     except Exception as e:
         try:
-            remove_from_queue(chat_id, 0)
+            _drop_current(chat_id)
         except Exception:
             pass
 
@@ -402,6 +429,8 @@ async def play_song(
         except Exception as fx_err:
             LOGGER.warning(f"[Effects] Skipped: {fx_err}")
 
+    song["file_path"] = media_path
+
     # ─────────────────────────────────────────
     # PLAY STREAM
     # ─────────────────────────────────────────
@@ -411,7 +440,7 @@ async def play_song(
     # Ensure the voice chat exists before asking PyTgCalls to play.
     # This avoids a long hang when the assistant has no VC-admin rights.
     try:
-        active_calls = await call_py.calls
+        active_calls = await asyncio.wait_for(call_py.calls, timeout=10)
     except Exception:
         active_calls = {}
 
@@ -419,7 +448,7 @@ async def play_song(
         LOGGER.info(f"[VC] Not connected — ensuring VC for {chat_id}")
         if not await _ensure_vc(chat_id, message):
             try:
-                remove_from_queue(chat_id, 0)
+                _drop_current(chat_id)
             except Exception:
                 pass
             return
@@ -432,7 +461,12 @@ async def play_song(
                 stream = MediaStream(
                     media_path,
                     audio_parameters=AudioQuality.HIGH,
-                    video_parameters=VideoQuality.SD_480p,
+                    video_parameters=VideoParameters(
+                        854,
+                        480,
+                        max(15, min(config.VIDEO_FPS, 30)),
+                        adjust_by_height=False,
+                    ),
                 )
             else:
                 stream = MediaStream(
@@ -445,17 +479,38 @@ async def play_song(
                 f"[PLAY] {chat_id}: calling play "
                 f"({'video' if is_video else 'audio'})"
             )
-            await asyncio.wait_for(call_py.play(chat_id, stream), timeout=45)
-            LOGGER.info(f"[PLAY] {chat_id}: play returned")
+            started = time.time()
+            await asyncio.wait_for(
+                call_py.play(chat_id, stream),
+                timeout=config.PLAY_TIMEOUT,
+            )
+            LOGGER.info(
+                f"[PLAY] {chat_id}: play returned in "
+                f"{time.time() - started:.1f}s"
+            )
 
             played = True
             break
 
         except asyncio.TimeoutError:
-            LOGGER.error(f"[PLAY] {chat_id}: play() timed out after 45s")
+            LOGGER.error(
+                f"[PLAY] {chat_id}: play() timed out after "
+                f"{config.PLAY_TIMEOUT}s"
+            )
+
+            if attempt == 0:
+                try:
+                    await asyncio.wait_for(
+                        call_py.leave_call(chat_id),
+                        timeout=10,
+                    )
+                except Exception:
+                    pass
+                await asyncio.sleep(2)
+                continue
 
             try:
-                remove_from_queue(chat_id, 0)
+                _drop_current(chat_id)
             except Exception:
                 pass
 
@@ -475,7 +530,7 @@ async def play_song(
                     continue
 
                 try:
-                    remove_from_queue(chat_id, 0)
+                    _drop_current(chat_id)
                 except Exception:
                     pass
 
@@ -484,8 +539,12 @@ async def play_song(
         except TelegramServerError as e:
             LOGGER.error(f"[PLAY] TelegramServerError: {e}")
 
+            if attempt == 0:
+                await asyncio.sleep(2)
+                continue
+
             try:
-                remove_from_queue(chat_id, 0)
+                _drop_current(chat_id)
             except Exception:
                 pass
 
@@ -519,7 +578,7 @@ async def play_song(
                     continue
 
                 try:
-                    remove_from_queue(chat_id, 0)
+                    _drop_current(chat_id)
                 except Exception:
                     pass
 
@@ -535,7 +594,7 @@ async def play_song(
                         continue
 
                 try:
-                    remove_from_queue(chat_id, 0)
+                    _drop_current(chat_id)
                 except Exception:
                     pass
 
@@ -548,7 +607,7 @@ async def play_song(
 
             # generic error
             try:
-                remove_from_queue(chat_id, 0)
+                _drop_current(chat_id)
             except Exception:
                 pass
 
@@ -618,7 +677,12 @@ async def play_song(
     register_panel(pmsg.chat.id, pmsg.id, chat_id)
     LOGGER.info(f"[PLAY] {chat_id}: panel updated")
 
-    asyncio.create_task(
+    for key, task in list(_progress_tasks.items()):
+        if key[0] == chat_id and not task.done():
+            task.cancel()
+            _progress_tasks.pop(key, None)
+
+    progress = asyncio.create_task(
         _update_progress(
             chat_id,
             pmsg,
@@ -626,6 +690,10 @@ async def play_song(
             total,
             content,
         )
+    )
+    _progress_tasks[(chat_id, pmsg.id)] = progress
+    progress.add_done_callback(
+        lambda _t, key=(chat_id, pmsg.id): _progress_tasks.pop(key, None)
     )
 
     # ─────────────────────────────────────────
