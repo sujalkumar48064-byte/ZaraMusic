@@ -127,6 +127,15 @@ if __name__ == "__main__":
     threading.Thread(target=_keep_alive, daemon=True).start()
     LOGGER.info("Keep-alive thread started")
 
+    # Render replaces the old instance only after the new health server is up.
+    # Starting the bot immediately makes two pollers share one token; Telegram
+    # then kills one getUpdates loop and the bot stops receiving commands.
+    if config.BOT_START_DELAY > 0:
+        LOGGER.info(
+            f"Waiting {config.BOT_START_DELAY}s for the previous instance to stop..."
+        )
+        time.sleep(config.BOT_START_DELAY)
+
     # 4. Bot start
     for attempt in range(10):
         try:
