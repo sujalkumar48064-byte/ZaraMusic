@@ -550,26 +550,13 @@ async def play_song(
 
     played = False
 
-    # Ensure the voice chat exists before asking PyTgCalls to play.
-    # This avoids a long hang when the assistant has no VC-admin rights.
     if _play_tokens.get(chat_id) != token:
         delete_file(media_path)
         return
 
-    try:
-        active_calls = await asyncio.wait_for(call_py.calls, timeout=10)
-    except Exception:
-        active_calls = {}
-
-    if chat_id not in active_calls:
-        LOGGER.info(f"[VC] Not connected — ensuring VC for {chat_id}")
-        if not await _ensure_vc(chat_id, message):
-            try:
-                _drop_song(chat_id, song, keep_file=True)
-            except Exception:
-                pass
-            return
-
+    # Try joining the existing group call first. Creating a group call while
+    # one is already active makes Telegram close the old call, which used to
+    # trigger a stream-end/call-left loop and wipe the queue.
     for attempt in range(2):
 
         if _play_tokens.get(chat_id) != token:

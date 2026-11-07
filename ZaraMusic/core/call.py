@@ -15,6 +15,9 @@ from ZaraMusic.utils.language import chat_strings
 from richgram import rich_esc, rich_heading, rich_kv_table, rich_note, rich_send
 
 
+_leaving: set[int] = set()
+
+
 async def leave_vc(chat_id: int) -> None:
     """
     Leave voice chat and clean the queue (AutoPlay's ON/OFF setting is kept).
@@ -41,6 +44,7 @@ async def leave_vc(chat_id: int) -> None:
         except Exception:
             pass
 
+    _leaving.add(int(chat_id))
     try:
         await call_py.leave_call(chat_id)
 
@@ -52,6 +56,12 @@ async def leave_vc(chat_id: int) -> None:
 
     except Exception as e:
         LOGGER.error(f"Leave VC Error: {e}")
+
+    async def _clear_leaving():
+        await asyncio.sleep(3)
+        _leaving.discard(int(chat_id))
+
+    asyncio.create_task(_clear_leaving())
 
 
 @call_py.on_update(fl.chat_update(ChatUpdate.Status.LEFT_CALL))
@@ -68,7 +78,26 @@ async def on_call_left(_: object, update: ChatUpdate) -> None:
     restarted. Clearing state here means the next /play starts clean.
     """
 
-    chat_id = update.chat_id
+    chat_id = int(update.chat_id)
+
+    # A call-left update can arrive after we already started a new call (the
+    # old call is being torn down by Telegram). Do not let that stale event
+    # wipe the new queue/play token.
+    await asyncio.sleep(2)
+
+    if chat_id in _leaving:
+        _leaving.discard(chat_id)
+        return
+
+    try:
+        active_calls = await asyncio.wait_for(call_py.calls, timeout=5)
+    except Exception:
+        active_calls = {}
+
+    if chat_id in active_calls:
+        LOGGER.info(f"[VC] Ignoring stale call-left for active call in {chat_id}")
+        return
+
     LOGGER.warning(f"[VC] Call ended externally in {chat_id} ({update.status}) — clearing state")
 
     try:
