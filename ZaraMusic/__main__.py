@@ -325,10 +325,62 @@ if __name__ == "__main__":
         loop.run_until_complete(save_cookies())
     loop.run_until_complete(_notify_owner(me, ASSISTANT_USERNAME, ASSISTANT_ID))
 
+
+# ── Polling guard ─────────────────────────────────────────────────────────────
+
+def _pending_update_count() -> int:
+    resp = requests.get(
+        f"https://api.telegram.org/bot{config.BOT_TOKEN}/getWebhookInfo",
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return int(resp.json().get("result", {}).get("pending_update_count", 0))
+
+
+async def _polling_guard() -> None:
+    """Restart the bot client if Telegram updates stop being consumed.
+
+    During Render deploys the old instance can briefly keep a getUpdates
+    long-poll open. Telegram then rejects the new poller and Pyrogram's update
+    loop exits without reconnecting, so commands silently stop working.
+    """
+    await asyncio.sleep(15)
+    restarts = 0
+    while True:
+        try:
+            pending = await asyncio.to_thread(_pending_update_count)
+            if pending > 5:
+                if restarts < 3:
+                    restarts += 1
+                    LOGGER.warning(
+                        f"Polling guard: {pending} pending updates; restarting bot client "
+                        f"({restarts}/3)"
+                    )
+                    try:
+                        await bot.stop()
+                    except Exception:
+                        pass
+                    await asyncio.sleep(2)
+                    await bot.start()
+                    LOGGER.info("Polling guard: bot client restarted")
+                else:
+                    LOGGER.error(
+                        f"Polling guard: {pending} updates still pending after 3 restarts"
+                    )
+            else:
+                if restarts:
+                    LOGGER.info("Polling guard: updates flowing again")
+                restarts = 0
+        except Exception as e:
+            LOGGER.warning(f"Polling guard check failed: {e}")
+        await asyncio.sleep(45)
+
     # 12. Watchdog
     from ZaraMusic.core.watcher import watchdog
     loop.create_task(watchdog())
     LOGGER.info("Watchdog started")
+    loop.create_task(_polling_guard())
+    LOGGER.info("Polling guard started")
 
     LOGGER.info("ZaraMusic is running")
 
