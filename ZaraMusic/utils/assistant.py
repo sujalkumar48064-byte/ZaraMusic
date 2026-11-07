@@ -27,14 +27,30 @@ async def is_assistant_in(chat_id: int):
 
 
 async def try_join_assistant(chat_id: int, pm: Message) -> bool:
+    invite_link = None
+
     try:
         invite_link = await bot.export_chat_invite_link(chat_id)
-
     except Exception as e:
+        # Public groups can be joined without admin invite-link permission.
+        try:
+            chat = await bot.get_chat(chat_id)
+            username = getattr(chat, "username", None)
+            if username:
+                await assistant.join_chat(f"@{username}")
+                await asyncio.sleep(2)
+                return True
+        except Exception:
+            pass
+
         await rich_edit(
             pm,
-            rich_heading("❍ ɪ ɴᴇᴇᴅ ɪɴᴠɪᴛᴇ ʟɪɴᴋ ᴘᴇʀᴍɪssɪᴏɴ", level=3)
-            + rich_note(f"<code>{rich_esc(e)}</code>"),
+            rich_heading("❍ ʙᴏᴛ ᴀᴅᴍɪɴ ɴᴇᴇᴅᴇᴅ", level=3)
+            + rich_note(
+                "<p>ᴍᴀᴋᴇ ᴛʜᴇ <b>ʙᴏᴛ</b> ᴀᴅᴍɪɴ ᴡɪᴛʜ "
+                "<b>ɪɴᴠɪᴛᴇ ᴜsᴇʀs</b> + <b>ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏ ᴄʜᴀᴛs</b>.</p>"
+                f"<p><code>{rich_esc(e)}</code></p>"
+            ),
         )
         return False
 
@@ -54,6 +70,17 @@ async def try_join_assistant(chat_id: int, pm: Message) -> bool:
         return True
 
     except RPCError as e:
+        # Try the public username as a final fallback.
+        try:
+            chat = await bot.get_chat(chat_id)
+            username = getattr(chat, "username", None)
+            if username:
+                await assistant.join_chat(f"@{username}")
+                await asyncio.sleep(2)
+                return True
+        except Exception:
+            pass
+
         await rich_edit(
             pm,
             rich_heading("❍ ᴀssɪsᴛᴀɴᴛ ᴊᴏɪɴ ғᴀɪʟᴇᴅ", level=3)
@@ -68,4 +95,3 @@ async def try_join_assistant(chat_id: int, pm: Message) -> bool:
             + rich_note(f"<code>{rich_esc(e)}</code>"),
         )
         return False
-        

@@ -5,6 +5,7 @@ import random
 import re
 import shutil
 import sys
+import time
 from typing import Optional, Union
 
 import aiofiles
@@ -280,11 +281,18 @@ async def _save_stream(resp, path: str) -> Optional[str]:
         return None
 
 
-async def _download_url(session, url: str, path: str, attempts: int = 2) -> Optional[str]:
+async def _download_url(
+    session,
+    url: str,
+    path: str,
+    attempts: int = 1,
+    timeout: int = None,
+) -> Optional[str]:
+    limit = timeout or FREE_SOURCE_TIMEOUT
     for attempt in range(1, attempts + 1):
         try:
             async with session.get(
-                url, timeout=aiohttp.ClientTimeout(total=min(YT_STREAM_TIMEOUT, 180))
+                url, timeout=aiohttp.ClientTimeout(total=limit)
             ) as resp:
                 if resp.status != 200:
                     logger.warning(f"[free] HTTP {resp.status} (attempt {attempt}/{attempts})")
@@ -340,7 +348,7 @@ async def _fetch_invidious(session, video_id: str):
             async with session.get(
                 f"{base}/api/v1/videos/{video_id}",
                 params={"local": "true"},
-                timeout=aiohttp.ClientTimeout(total=20),
+                timeout=aiohttp.ClientTimeout(total=INVIDIOUS_META_TIMEOUT),
             ) as resp:
                 if resp.status != 200:
                     logger.warning(f"[invidious] {base}: HTTP {resp.status}")
@@ -410,16 +418,16 @@ async def _download_via_multimp3(video_id: str) -> Optional[str]:
     payload = {"url": f"https://www.youtube.com/watch?v={video_id}", "quality": "128"}
     try:
         async with aiohttp.ClientSession() as session:
-            for attempt in range(1, 3):
+            for attempt in range(1, 2):
                 try:
                     async with session.post(
                         "https://multimp3.vercel.app/api/download",
                         json=payload,
-                        timeout=aiohttp.ClientTimeout(total=min(YT_STREAM_TIMEOUT, 120)),
+                        timeout=aiohttp.ClientTimeout(total=FREE_SOURCE_TIMEOUT),
                     ) as resp:
                         if resp.status != 200:
                             logger.warning(
-                                f"[free:multimp3] HTTP {resp.status} (attempt {attempt}/2)"
+                                f"[free:multimp3] HTTP {resp.status} (attempt {attempt}/1)"
                             )
                             continue
                         got = await _save_stream(resp, path)
@@ -427,7 +435,7 @@ async def _download_via_multimp3(video_id: str) -> Optional[str]:
                         logger.info(f"[free:multimp3] Downloaded {video_id}")
                         return got
                 except Exception as e:
-                    logger.warning(f"[free:multimp3] attempt {attempt}/2: {e}")
+                    logger.warning(f"[free:multimp3] attempt {attempt}/1: {e}")
     except Exception as e:
         logger.warning(f"[free:multimp3] {e}")
     return None
@@ -441,7 +449,7 @@ async def _download_via_samplecut(video_id: str) -> Optional[str]:
             async with session.post(
                 "https://api.samplecut.app/v1/downloads",
                 json=payload,
-                timeout=aiohttp.ClientTimeout(total=180),
+                timeout=aiohttp.ClientTimeout(total=FREE_SOURCE_TIMEOUT),
             ) as resp:
                 if resp.status not in (200, 201):
                     logger.warning(f"[free:samplecut] HTTP {resp.status}")
@@ -468,7 +476,7 @@ async def _download_via_freeapi(video_id: str, video: bool) -> Optional[str]:
             async with session.get(
                 "https://freeapi.pro/api/alldl",
                 params={"url": f"https://www.youtube.com/watch?v={video_id}"},
-                timeout=aiohttp.ClientTimeout(total=120),
+                timeout=aiohttp.ClientTimeout(total=min(FREE_SOURCE_TIMEOUT, 45)),
             ) as resp:
                 if resp.status != 200:
                     logger.warning(f"[free:freeapi] HTTP {resp.status}")
@@ -490,23 +498,37 @@ async def _download_via_freeapi(video_id: str, video: bool) -> Optional[str]:
         return None
 
 
+async def _run_source(name: str, fn, deadline: float, *args):
+    remaining = deadline - time.monotonic()
+    if remaining <= 1:
+        logger.warning(f"[free] budget exhausted before {name}")
+        return None
+    try:
+        return await asyncio.wait_for(fn(*args), timeout=remaining)
+    except asyncio.TimeoutError:
+        logger.warning(f"[free] {name} timed out after {remaining:.0f}s")
+        return None
+
+
 async def _download_via_free(video_id: str, video: bool) -> Optional[str]:
     if not FREE_API_FALLBACK:
         return None
 
-    got = await _download_via_invidious(video_id, video)
+    deadline = time.monotonic() + FREE_SOURCE_BUDGET
+
+    got = await _run_source("invidious", _download_via_invidious, deadline, video_id, video)
     if got:
         return got
 
     if not video:
-        got = await _download_via_multimp3(video_id)
+        got = await _run_source("multimp3", _download_via_multimp3, deadline, video_id)
         if got:
             return got
-        got = await _download_via_samplecut(video_id)
+        got = await _run_source("samplecut", _download_via_samplecut, deadline, video_id)
         if got:
             return got
 
-    return await _download_via_freeapi(video_id, video)
+    return await _run_source("freeapi", _download_via_freeapi, deadline, video_id, video)
 
 
 async def _download_ytdlp(video_id: str, video: bool) -> Optional[str]:
@@ -542,7 +564,10 @@ async def _download_ytdlp(video_id: str, video: bool) -> Optional[str]:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )
-        _, err = await asyncio.wait_for(proc.communicate(), timeout=min(YT_STREAM_TIMEOUT, 180))
+        _, err = await asyncio.wait_for(
+            proc.communicate(),
+            timeout=min(YT_STREAM_TIMEOUT, YTDLP_DOWNLOAD_TIMEOUT),
+        )
         if proc.returncode != 0:
             tail = (err or b"").decode(errors="ignore").strip().splitlines()[-1:] or [""]
             logger.warning(f"[yt-dlp] failed for {video_id} (exit {proc.returncode}): {tail[0]}")
@@ -733,6 +758,35 @@ async def _video_meta(video_id: str):
         return None
 
 
+async def _oembed_meta(video_id: str):
+    """Fast title/thumb fallback when the Invidious metadata API is down."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "https://www.youtube.com/oembed",
+                params={
+                    "url": f"https://www.youtube.com/watch?v={video_id}",
+                    "format": "json",
+                },
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json(content_type=None)
+        title = (data or {}).get("title")
+        if not title:
+            return None
+        return (
+            f"https://www.youtube.com/watch?v={video_id}",
+            title,
+            "0:00",
+            (data or {}).get("thumbnail_url", "").split("?")[0],
+        )
+    except Exception as e:
+        logger.warning(f"[oembed] meta {video_id}: {e}")
+        return None
+
+
 async def _search_invidious(query: str):
     """Fallback search through Invidious when py-yt-search fails."""
     if not INVIDIOUS_APIS:
@@ -745,7 +799,7 @@ async def _search_invidious(query: str):
                     async with session.get(
                         f"{base}/api/v1/search",
                         params={"q": query, "type": "video"},
-                        timeout=aiohttp.ClientTimeout(total=8),
+                        timeout=aiohttp.ClientTimeout(total=min(SEARCH_TIMEOUT, 6)),
                     ) as resp:
                         if resp.status != 200:
                             logger.warning(f"[invidious] search {base}: HTTP {resp.status}")
@@ -819,9 +873,14 @@ async def search_yt(query: str):
 
     if direct_id:
         try:
-            meta = await asyncio.wait_for(_video_meta(direct_id), timeout=SEARCH_TIMEOUT)
+            meta = await asyncio.wait_for(
+                _video_meta(direct_id),
+                timeout=min(SEARCH_TIMEOUT, 8),
+            )
         except Exception:
             meta = None
+        if meta is None:
+            meta = await _oembed_meta(direct_id)
         if meta:
             return meta
 

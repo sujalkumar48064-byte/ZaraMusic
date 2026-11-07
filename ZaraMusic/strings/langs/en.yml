@@ -249,10 +249,10 @@ kv_seeked_to: "sᴇᴇᴋᴇᴅ ᴛᴏ"
 loading_title: "❍ ʟᴏᴀᴅɪɴɢ..."
 vc_start_failed_server_title: "❍ ᴠᴄ sᴛᴀʀᴛ ғᴀɪʟᴇᴅ (Telegram Server)"
 vc_perm_missing_title: "❍ ᴠᴄ sᴛᴀʀᴛ ᴘᴇʀᴍɪssɪᴏɴ ᴍɪssɪɴɢ"
-vc_perm_missing_note: "ɢɪᴠᴇ ᴀssɪsᴛᴀɴᴛ » ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏ ᴄʜᴀᴛs, ᴀᴅᴍɪɴ ʀɪɢʜᴛs"
+vc_perm_missing_note: "ᴍᴀᴋᴇ ᴛʜᴇ ʙᴏᴛ ᴀᴅᴍɪɴ » ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏ ᴄʜᴀᴛs + ɪɴᴠɪᴛᴇ ᴜsᴇʀs · ᴀssɪsᴛᴀɴᴛ ᴀᴜᴛᴏ-ᴘʀᴏᴍᴏᴛᴇᴅ"
 vc_start_failed_title: "❍ ᴠᴄ sᴛᴀʀᴛ ғᴀɪʟᴇᴅ"
 playback_failed_server_title: "❍ ᴘʟᴀʏʙᴀᴄᴋ ғᴀɪʟᴇᴅ (Telegram Server)"
-playback_perm_missing_note: "ᴘʟᴇᴀsᴇ ɢɪᴠᴇ » ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏ ᴄʜᴀᴛs, ᴀᴅᴍɪɴ ʀɪɢʜᴛs · ᴀssɪsᴛᴀɴᴛ ᴍᴜsᴛ ʙᴇ ᴀᴅᴍɪɴ"
+playback_perm_missing_note: "ᴍᴀᴋᴇ ᴛʜᴇ ʙᴏᴛ ᴀᴅᴍɪɴ » ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏ ᴄʜᴀᴛs + ɪɴᴠɪᴛᴇ ᴜsᴇʀs · ᴀssɪsᴛᴀɴᴛ ᴀᴜᴛᴏ-ᴘʀᴏᴍᴏᴛᴇᴅ"
 
 # ── /gblock, /gunblock, /ublock, /uunblock, /blocklist (owner only) ──────────
 block_invalid_chat_id_title: "❍ ɪɴᴠᴀʟɪᴅ ᴄʜᴀᴛ ɪᴅ"
@@ -300,8 +300,8 @@ onboarding_powered_by: "ᴘᴏᴡᴇʀᴇᴅ ʙʏ » <a href='https://t.me/MEE_Z
 group_thanks_title: "❍ ʜᴇʏ {0}, ᴛʜɪs ɪs {1}"
 group_thanks_note: "ᴛʜᴀɴᴋs ғᴏʀ ᴀᴅᴅɪɴɢ ᴍᴇ ɪɴ {0}. {1} ᴄᴀɴ ɴᴏᴡ ᴘʟᴀʏ sᴏɴɢs ʜᴇʀᴇ."
 group_admin_request_title: "ᴛʜᴀɴᴋs ғᴏʀ ᴀᴅᴅɪɴɢ ᴍᴇ! 🥀"
-group_admin_request_note1: "<p>ᴘʟᴇᴀsᴇ ᴍᴀᴋᴇ ᴍᴇ ᴀɴ ᴀᴅᴍɪɴ ᴡɪᴛʜ ᴛʜᴇsᴇ ᴘᴇʀᴍɪssɪᴏɴs:</p><p>❍ ᴅᴇʟᴇᴛᴇ ᴍᴇssᴀɢᴇs<br>❍ ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏ ᴄʜᴀᴛs<br>❍ ɪɴᴠɪᴛᴇ ᴜsᴇʀs</p>"
-group_admin_request_note2: "ᴡɪᴛʜᴏᴜᴛ ᴀᴅᴍɪɴ ᴘᴇʀᴍs sᴏᴍᴇ ғᴇᴀᴛᴜʀᴇs ᴡᴏɴ'ᴛ ᴡᴏʀᴋ! 🚫"
+group_admin_request_note1: "<p>ᴍᴀᴋᴇ ᴛʜᴇ ʙᴏᴛ ᴀᴅᴍɪɴ ᴡɪᴛʜ:</p><p>❍ ᴅᴇʟᴇᴛᴇ ᴍᴇssᴀɢᴇs<br>❍ ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏ ᴄʜᴀᴛs<br>❍ ɪɴᴠɪᴛᴇ ᴜsᴇʀs</p><p>ᴛʜᴇ ᴀssɪsᴛᴀɴᴛ ɪs ᴘʀᴏᴍᴏᴛᴇᴅ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ.</p>"
+group_admin_request_note2: "ᴡɪᴛʜᴏᴜᴛ ʙᴏᴛ ᴀᴅᴍɪɴ ᴘᴇʀᴍs, ᴠᴄ ᴘʟᴀʏʙᴀᴄᴋ ᴡᴏɴ'ᴛ ᴡᴏʀᴋ! 🚫"
 
 # ── /help ──────────────────────────────────────────────────────────────────────
 help_pick_category_title: "📜 ᴄʜᴏᴏsᴇ ᴀ ᴄᴀᴛᴇɢᴏʀʏ"

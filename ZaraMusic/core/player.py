@@ -97,6 +97,7 @@ def _now_playing_kb(elapsed: float, total: float, chat_id=None, lang=None) -> st
 
 _panel_content: dict = {}
 _play_tokens: dict[int, int] = {}
+_fail_streak: dict[int, int] = {}
 
 
 def bump_play_token(chat_id: int) -> int:
@@ -161,10 +162,43 @@ async def _update_progress(
 # AUTO START VC
 # ─────────────────────────────────────────────
 
-def _drop_song(chat_id: int, song: dict) -> None:
+def _drop_song(chat_id: int, song: dict, keep_file: bool = False) -> None:
     dropped = remove_song(chat_id, song)
-    if dropped:
+    if dropped and not keep_file:
         delete_file(dropped.get("file_path", ""))
+
+
+def _reset_fail_streak(chat_id: int) -> None:
+    _fail_streak.pop(int(chat_id), None)
+
+
+async def _continue_with_next(chat_id: int, token: int, reason: str) -> None:
+    """After a transient play failure, try the next queued song instead of stalling."""
+    chat_id = int(chat_id)
+
+    if _play_tokens.get(chat_id) != token:
+        return
+    if _fail_streak.get(chat_id, 0) >= 2:
+        LOGGER.warning(f"[PLAY] {chat_id}: stopping retries after repeated failures")
+        return
+
+    nxt = peek_current(chat_id)
+    if not nxt:
+        return
+
+    _fail_streak[chat_id] = _fail_streak.get(chat_id, 0) + 1
+    LOGGER.info(f"[PLAY] {chat_id}: trying next song after {reason}")
+
+    try:
+        lang = chat_strings(chat_id)
+        msg = await rich_send(
+            bot, chat_id,
+            rich_heading(lang["next_track_title"], level=3)
+            + rich_kv_table([(lang["kv_title"], f"<code>{rich_esc(nxt['title'])}</code>")]),
+        )
+        await play_song(chat_id, msg, nxt)
+    except Exception as e:
+        LOGGER.warning(f"[PLAY] {chat_id}: next-song retry failed: {e}")
 
 
 async def _fail_status(chat_id: int, status_message, content: str) -> None:
@@ -183,7 +217,9 @@ async def _fail_status(chat_id: int, status_message, content: str) -> None:
 
 
 async def _ensure_assistant_admin(chat_id: int) -> bool:
-    """Make the assistant a group admin so it can start the voice chat."""
+    """Ensure the assistant has VC admin rights; promote it through the bot when possible."""
+
+    chat_id = int(chat_id)
 
     try:
         me = assistant.me or await assistant.get_me()
@@ -192,16 +228,13 @@ async def _ensure_assistant_admin(chat_id: int) -> bool:
         LOGGER.warning(f"[VC] assistant identity failed: {e}")
         return False
 
-    try:
-        bot_member = await bot.get_chat_member(chat_id, "me")
-        bot_status = str(getattr(bot_member, "status", "")).lower()
-        if bot_status not in ("administrator", "creator", "owner"):
-            LOGGER.info(f"[VC] Bot is not admin in {chat_id}; cannot promote assistant")
-            return False
-    except Exception:
-        pass
-
     async def _lookup_member():
+        try:
+            member = await assistant.get_chat_member(chat_id, aid)
+            if member is not None:
+                return member
+        except Exception:
+            pass
         try:
             return await bot.get_chat_member(chat_id, aid)
         except Exception:
@@ -217,34 +250,93 @@ async def _ensure_assistant_admin(chat_id: int) -> bool:
         except Exception as e:
             LOGGER.warning(f"[VC] assistant lookup failed: {e}")
 
-    member = await _lookup_member()
-    if member is None:
-        await _cache_assistant_peer()
-        member = await _lookup_member()
-
-    if member is not None:
+    def _has_vc_rights(member) -> bool:
+        if member is None:
+            return False
         status = str(getattr(member, "status", "")).lower()
+        if "owner" in status or "creator" in status:
+            return True
         priv = getattr(member, "privileges", None)
-        if "owner" in status:
-            return True
-        if "administrator" in status and getattr(priv, "can_manage_video_chats", False):
-            return True
+        return (
+            "administrator" in status
+            and bool(getattr(priv, "can_manage_video_chats", False))
+        )
+
+    member = await _lookup_member()
+    if _has_vc_rights(member):
+        return True
+
+    try:
+        bot_member = await bot.get_chat_member(chat_id, "me")
+    except Exception:
+        bot_member = None
+
+    bot_status = str(getattr(bot_member, "status", "")).lower()
+    bot_admin = bot_status in ("administrator", "creator", "owner")
+
+    if not bot_admin:
+        LOGGER.warning(
+            f"[VC] Bot is not admin in {chat_id}; cannot auto-promote assistant. "
+            "Make the bot admin with Manage Video Chats + Invite Users."
+        )
+        # Last resort: if the assistant is already an admin with promote rights,
+        # let it try to grant itself the VC right.
+        priv = getattr(member, "privileges", None)
+        if (
+            member is not None
+            and "administrator" in str(getattr(member, "status", "")).lower()
+            and bool(getattr(priv, "can_promote_members", False))
+        ):
+            try:
+                await assistant.promote_chat_member(
+                    chat_id,
+                    aid,
+                    privileges=ChatAdministratorRights(
+                        can_manage_chat=True,
+                        can_manage_video_chats=True,
+                        can_invite_users=True,
+                    ),
+                )
+                LOGGER.info(f"[VC] Assistant updated its own rights in {chat_id}")
+                await asyncio.sleep(1)
+                return True
+            except Exception as e:
+                LOGGER.warning(f"[VC] assistant self-promote failed: {e}")
+        return False
 
     if member is None:
+        joined = False
         link = None
         try:
             link = await bot.create_chat_invite_link(chat_id, member_limit=1)
             await assistant.join_chat(link.invite_link)
+            joined = True
             LOGGER.info(f"[VC] Assistant joined {chat_id}")
         except Exception as e:
-            LOGGER.warning(f"[VC] assistant join failed: {e}")
+            LOGGER.warning(f"[VC] assistant invite-join failed: {e}")
         finally:
             if link is not None:
                 try:
                     await bot.revoke_chat_invite_link(chat_id, link.invite_link)
                 except Exception:
                     pass
+
+        if not joined:
+            # Public groups can be joined without an invite link.
+            try:
+                chat = await bot.get_chat(chat_id)
+                username = getattr(chat, "username", None)
+                if username:
+                    await assistant.join_chat(f"@{username}")
+                    joined = True
+                    LOGGER.info(f"[VC] Assistant joined public group {chat_id}")
+            except Exception as e:
+                LOGGER.warning(f"[VC] assistant public join failed: {e}")
+
         await _cache_assistant_peer()
+        member = await _lookup_member()
+        if _has_vc_rights(member):
+            return True
 
     try:
         await bot.promote_chat_member(
@@ -281,7 +373,7 @@ async def _ensure_vc(chat_id: int, status_message=None) -> bool:
     last_err = None
 
     try:
-        await asyncio.wait_for(_create_vc(chat_id), timeout=25)
+        await asyncio.wait_for(_create_vc(chat_id), timeout=15)
         LOGGER.info(f"[VC] Created in {chat_id}")
         await asyncio.sleep(1)
         return True
@@ -307,7 +399,7 @@ async def _ensure_vc(chat_id: int, status_message=None) -> bool:
         try:
             fixed = await asyncio.wait_for(
                 _ensure_assistant_admin(chat_id),
-                timeout=35,
+                timeout=20,
             )
         except Exception:
             fixed = False
@@ -316,7 +408,7 @@ async def _ensure_vc(chat_id: int, status_message=None) -> bool:
 
     if fixed:
         try:
-            await asyncio.wait_for(_create_vc(chat_id), timeout=25)
+            await asyncio.wait_for(_create_vc(chat_id), timeout=15)
             LOGGER.info(f"[VC] Created in {chat_id} after assistant setup")
             await asyncio.sleep(1)
             return True
@@ -473,7 +565,7 @@ async def play_song(
         LOGGER.info(f"[VC] Not connected — ensuring VC for {chat_id}")
         if not await _ensure_vc(chat_id, message):
             try:
-                _drop_song(chat_id, song)
+                _drop_song(chat_id, song, keep_file=True)
             except Exception:
                 pass
             return
@@ -534,7 +626,7 @@ async def play_song(
                 continue
 
             try:
-                _drop_song(chat_id, song)
+                _drop_song(chat_id, song, keep_file=True)
             except Exception:
                 pass
 
@@ -542,6 +634,7 @@ async def play_song(
                 rich_heading(lang["effects_playback_failed_title"], level=3)
                 + rich_note("Playback timed out. Please try again."),
             )
+            await _continue_with_next(chat_id, token, "play timeout")
             return
 
         except NoActiveGroupCall:
@@ -554,7 +647,7 @@ async def play_song(
                     continue
 
                 try:
-                    _drop_song(chat_id, song)
+                    _drop_song(chat_id, song, keep_file=True)
                 except Exception:
                     pass
 
@@ -568,7 +661,7 @@ async def play_song(
                 continue
 
             try:
-                _drop_song(chat_id, song)
+                _drop_song(chat_id, song, keep_file=True)
             except Exception:
                 pass
 
@@ -576,6 +669,7 @@ async def play_song(
                 rich_heading(lang["playback_failed_server_title"], level=3)
                 + rich_note(f"<code>{rich_esc(e)}</code>"),
             )
+            await _continue_with_next(chat_id, token, "telegram server error")
             return
 
         except Exception as e:
@@ -602,7 +696,7 @@ async def play_song(
                     continue
 
                 try:
-                    _drop_song(chat_id, song)
+                    _drop_song(chat_id, song, keep_file=True)
                 except Exception:
                     pass
 
@@ -618,7 +712,7 @@ async def play_song(
                         continue
 
                 try:
-                    _drop_song(chat_id, song)
+                    _drop_song(chat_id, song, keep_file=True)
                 except Exception:
                     pass
 
@@ -631,7 +725,7 @@ async def play_song(
 
             # generic error
             try:
-                _drop_song(chat_id, song)
+                _drop_song(chat_id, song, keep_file=True)
             except Exception:
                 pass
 
@@ -640,10 +734,13 @@ async def play_song(
                 + rich_note(f"<code>{rich_esc(e)}</code>"),
             )
             LOGGER.error(f"[PLAY ERROR] {e}")
+            await _continue_with_next(chat_id, token, "play error")
             return
 
     if not played:
         return
+
+    _reset_fail_streak(chat_id)
 
     if _play_tokens.get(chat_id) != token:
         # A skip/stop landed while call_py.play() was starting. If nothing is

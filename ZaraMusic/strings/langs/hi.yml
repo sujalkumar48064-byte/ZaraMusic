@@ -248,10 +248,10 @@ kv_seeked_to: "सीक किया गया"
 loading_title: "❍ लोड हो रहा है..."
 vc_start_failed_server_title: "❍ वीसी शुरू करना विफल (Telegram Server)"
 vc_perm_missing_title: "❍ वीसी शुरू करने की अनुमति नहीं है"
-vc_perm_missing_note: "असिस्टेंट को दें » वीडियो चैट मैनेज करें, एडमिन अधिकार"
+vc_perm_missing_note: "बॉट को एडमिन बनाएं » वीडियो चैट मैनेज करें + यूज़र्स इनवाइट करें · असिस्टेंट अपने आप एडमिन हो जाएगा"
 vc_start_failed_title: "❍ वीसी शुरू करना विफल"
 playback_failed_server_title: "❍ प्लेबैक विफल (Telegram Server)"
-playback_perm_missing_note: "कृपया दें » वीडियो चैट मैनेज करें, एडमिन अधिकार · असिस्टेंट को एडमिन होना चाहिए"
+playback_perm_missing_note: "बॉट को एडमिन बनाएं » वीडियो चैट मैनेज करें + यूज़र्स इनवाइट करें · असिस्टेंट अपने आप एडमिन हो जाएगा"
 
 # ── /gblock, /gunblock, /ublock, /uunblock, /blocklist (owner only) ──────────
 block_invalid_chat_id_title: "❍ अमान्य चैट आईडी"
@@ -299,8 +299,8 @@ onboarding_powered_by: "पावर्ड बाय » <a href='https://t.me/ME
 group_thanks_title: "❍ नमस्ते {0}, यह है {1}"
 group_thanks_note: "{0} में मुझे जोड़ने के लिए धन्यवाद। {1} अब यहां गाने चला सकता है।"
 group_admin_request_title: "मुझे जोड़ने के लिए धन्यवाद! 🥀"
-group_admin_request_note1: "<p>कृपया मुझे इन अनुमतियों के साथ एडमिन बनाएं:</p><p>❍ संदेश हटाएं<br>❍ वीडियो चैट मैनेज करें<br>❍ यूज़र्स को आमंत्रित करें</p>"
-group_admin_request_note2: "एडमिन अनुमतियों के बिना कुछ फ़ीचर्स काम नहीं करेंगे! 🚫"
+group_admin_request_note1: "<p>बॉट को इन अनुमतियों के साथ एडमिन बनाएं:</p><p>❍ संदेश हटाएं<br>❍ वीडियो चैट मैनेज करें<br>❍ यूज़र्स को आमंत्रित करें</p><p>असिस्टेंट अपने आप एडमिन हो जाएगा।</p>"
+group_admin_request_note2: "बॉट एडमिन के बिना वीडियो चैट प्लेबैक काम नहीं करेगा! 🚫"
 
 # ── /help ──────────────────────────────────────────────────────────────────────
 help_pick_category_title: "📜 एक कैटेगरी चुनें"

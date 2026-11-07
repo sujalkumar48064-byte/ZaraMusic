@@ -66,9 +66,16 @@ YT_STREAM_TIMEOUT = 900   # 15 min  — download / stream long songs
 MAX_CONCURRENT_DOWNLOADS = int(os.getenv("MAX_CONCURRENT_DOWNLOADS", "3"))
 SEARCH_TIMEOUT           = int(os.getenv("SEARCH_TIMEOUT", "12"))
 DOWNLOAD_TIMEOUT         = int(os.getenv("DOWNLOAD_TIMEOUT", "180"))
-PLAY_TIMEOUT             = int(os.getenv("PLAY_TIMEOUT", "75"))
+PLAY_TIMEOUT             = int(os.getenv("PLAY_TIMEOUT", "60"))
 BOT_WORKERS              = int(os.getenv("BOT_WORKERS", "32"))
 VIDEO_FPS                = int(os.getenv("VIDEO_FPS", "24"))
+
+# Public download sources can be slow/dead. Keep each attempt bounded so one
+# broken mirror cannot hold the whole /play request for minutes.
+INVIDIOUS_META_TIMEOUT   = int(os.getenv("INVIDIOUS_META_TIMEOUT", "8"))
+FREE_SOURCE_TIMEOUT      = int(os.getenv("FREE_SOURCE_TIMEOUT", "60"))
+FREE_SOURCE_BUDGET       = int(os.getenv("FREE_SOURCE_BUDGET", "120"))
+YTDLP_DOWNLOAD_TIMEOUT   = int(os.getenv("YTDLP_DOWNLOAD_TIMEOUT", "90"))
 
 # ── NSFW Moderation API ─────────────────────────────────────────────────────
 #NSFW_API_URL = os.getenv("NSFW_API_URL", "https://ai-moderation-api-khyr.onrender.com")
