@@ -67,7 +67,7 @@ MAX_CONCURRENT_DOWNLOADS = int(os.getenv("MAX_CONCURRENT_DOWNLOADS", "3"))
 SEARCH_TIMEOUT           = int(os.getenv("SEARCH_TIMEOUT", "12"))
 DOWNLOAD_TIMEOUT         = int(os.getenv("DOWNLOAD_TIMEOUT", "180"))
 PLAY_TIMEOUT             = int(os.getenv("PLAY_TIMEOUT", "60"))
-PLAY_JOIN_TIMEOUT        = int(os.getenv("PLAY_JOIN_TIMEOUT", "20"))
+PLAY_JOIN_TIMEOUT        = int(os.getenv("PLAY_JOIN_TIMEOUT", "10"))
 BOT_WORKERS              = int(os.getenv("BOT_WORKERS", "32"))
 VIDEO_FPS                = int(os.getenv("VIDEO_FPS", "24"))
 

@@ -7,7 +7,7 @@ from pyrogram.enums import ParseMode
 from pyrogram.types import Message
 
 import config
-from ZaraMusic import bot
+from ZaraMusic import LOGGER, bot
 from ZaraMusic.core.channels import target_chat
 from ZaraMusic.core.player import play_song
 from ZaraMusic.core.queue import add_to_queue, peek_current, queue_lock, queue_size
@@ -89,6 +89,8 @@ async def play_handler(_, message: Message) -> None:
         return
     user_id = message.from_user.id if message.from_user else 0
     lang = chat_strings(chat_id)
+
+    LOGGER.info(f"[PLAY] command chat={chat_id} user={user_id}")
 
     _db_track(message.chat.id, user_id)
 
@@ -238,6 +240,8 @@ async def _process_play(message: Message, query: str, video: bool = False, chat_
     chat_id = chat_id or message.chat.id
     lang = chat_strings(chat_id)
 
+    LOGGER.info(f"[PLAY] processing chat={chat_id} query={query[:100]!r} video={video}")
+
     pm = await rich_send(bot, chat_id, rich_heading(lang["play_processing_title"], level=3))
 
     if queue_size(chat_id) >= config.QUEUE_LIMIT:
@@ -246,6 +250,7 @@ async def _process_play(message: Message, query: str, video: bool = False, chat_
 
     # Assistant check — uses utils/assistant.py
     status = await is_assistant_in(chat_id)
+    LOGGER.info(f"[PLAY] assistant status in {chat_id}: {status!r}")
 
     if status == "banned":
         await rich_edit(
@@ -275,7 +280,9 @@ async def _process_play(message: Message, query: str, video: bool = False, chat_
     # Search YouTube
     try:
         result = await search_yt(query)
+        LOGGER.info(f"[PLAY] search ok in {chat_id}")
     except Exception as e:
+        LOGGER.warning(f"[PLAY] search failed in {chat_id}: {e}")
         await rich_edit(
             pm,
             rich_heading(lang["play_search_failed_title"], level=3)
@@ -388,6 +395,8 @@ async def _process_play(message: Message, query: str, video: bool = False, chat_
 
     async with queue_lock(chat_id):
         pos = add_to_queue(chat_id, song)
+
+    LOGGER.info(f"[PLAY] queued in {chat_id}: pos={pos} title={title[:80]!r}")
 
     if pos == 0:
         await rich_edit(pm, _queue_full_content(lang))
