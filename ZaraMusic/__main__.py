@@ -109,12 +109,13 @@ if __name__ == "__main__":
 
     # 1. MongoDB
     try:
-        from ZaraMusic.utils.db import start_mongo
+        from ZaraMusic.utils.db import start_mongo, start_mongo_retry
         ok = start_mongo()
         if ok:
             LOGGER.info("MongoDB ready.")
         else:
             LOGGER.warning("MongoDB not connected — continuing without DB.")
+            start_mongo_retry()
     except Exception as e:
         LOGGER.warning(f"MongoDB startup error: {e} — continuing without DB.")
 
@@ -258,7 +259,10 @@ if __name__ == "__main__":
         )
         LOGGER.info("Default admin rights set")
     except Exception as e:
-        LOGGER.warning(f"Could not set default admin rights: {e}")
+        if "RIGHTS_NOT_MODIFIED" in str(e):
+            LOGGER.info("Default admin rights already up to date.")
+        else:
+            LOGGER.warning(f"Could not set default admin rights: {e}")
 
     try:
         bot.set_bot_info_short_description(config.BOT_SHORT_BIO)

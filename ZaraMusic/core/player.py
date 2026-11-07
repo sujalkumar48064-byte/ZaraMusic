@@ -583,9 +583,12 @@ async def play_song(
                 f"({'video' if is_video else 'audio'})"
             )
             started = time.time()
+            attempt_timeout = (
+                config.PLAY_JOIN_TIMEOUT if attempt == 0 else config.PLAY_TIMEOUT
+            )
             await asyncio.wait_for(
                 call_py.play(chat_id, stream),
-                timeout=config.PLAY_TIMEOUT,
+                timeout=attempt_timeout,
             )
             LOGGER.info(
                 f"[PLAY] {chat_id}: play returned in "
@@ -598,10 +601,15 @@ async def play_song(
         except asyncio.TimeoutError:
             LOGGER.error(
                 f"[PLAY] {chat_id}: play() timed out after "
-                f"{config.PLAY_TIMEOUT}s"
+                f"{attempt_timeout}s"
             )
 
             if attempt == 0:
+                try:
+                    from ZaraMusic.core.call import mark_leaving
+                    mark_leaving(chat_id)
+                except Exception:
+                    pass
                 try:
                     await asyncio.wait_for(
                         call_py.leave_call(chat_id),
@@ -609,7 +617,7 @@ async def play_song(
                     )
                 except Exception:
                     pass
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
                 continue
 
             try:

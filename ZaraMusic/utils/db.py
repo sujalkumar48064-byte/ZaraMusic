@@ -1,4 +1,6 @@
 import logging
+import threading
+import time
 from typing import Optional
 
 from pymongo import MongoClient
@@ -11,6 +13,7 @@ logger = logging.getLogger(__name__)
 # ── Client ─────────────────────────────────────────────────────────────────────
 _client: Optional[MongoClient] = None
 _db = None
+_retry_thread: Optional[threading.Thread] = None
 
 
 def start_mongo() -> bool:
@@ -21,23 +24,57 @@ def start_mongo() -> bool:
         return False
 
     try:
-        _client = MongoClient(config.MONGO_DB_URL, serverSelectionTimeoutMS=5000)
+        _client = MongoClient(
+            config.MONGO_DB_URL,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000,
+            socketTimeoutMS=15000,
+        )
         _client.admin.command("ping")
         _db = _client["ZaraMusic"]
         logger.info("✅ MongoDB connected successfully.")
         return True
 
     except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        logger.error(f"❌ MongoDB connection failed: {e}")
+        detail = str(e).split(",")[0][:180]
+        logger.error(
+            "❌ MongoDB connection failed: %s. "
+            "Atlas → Network Access me Render IP (ya 0.0.0.0/0) allow karo.",
+            detail,
+        )
         _client = None
         _db = None
         return False
 
     except Exception as e:
-        logger.error(f"❌ MongoDB unexpected error: {e}")
+        logger.error(f"❌ MongoDB unexpected error: {str(e)[:200]}")
         _client = None
         _db = None
         return False
+
+
+def start_mongo_retry() -> None:
+    """Retry Atlas in the background so whitelisting an IP needs no restart."""
+    global _retry_thread
+
+    if _retry_thread is not None and _retry_thread.is_alive():
+        return
+
+    def _worker() -> None:
+        global _retry_thread
+        while _db is None:
+            time.sleep(300)
+            if start_mongo():
+                logger.info("✅ MongoDB reconnected after retry.")
+                break
+        _retry_thread = None
+
+    _retry_thread = threading.Thread(
+        target=_worker,
+        name="mongo-retry",
+        daemon=True,
+    )
+    _retry_thread.start()
 
 
 def get_db():

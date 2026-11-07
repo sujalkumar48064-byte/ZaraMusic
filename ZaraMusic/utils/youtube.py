@@ -85,7 +85,7 @@ def _get_cookie_file() -> Optional[str]:
     if not files:
         if not _cookie_warned:
             _cookie_warned = True
-            logger.warning("[cookies] No cookie files found; downloads might fail.")
+            logger.info("[cookies] No cookie files found — using free/API fallback.")
         return None
     return random.choice(files)
 

@@ -18,6 +18,21 @@ from richgram import rich_esc, rich_heading, rich_kv_table, rich_note, rich_send
 _leaving: set[int] = set()
 
 
+def mark_leaving(chat_id: int) -> None:
+    """Suppress the matching call-left update after an intentional leave."""
+    cid = int(chat_id)
+    _leaving.add(cid)
+
+    async def _clear():
+        await asyncio.sleep(3)
+        _leaving.discard(cid)
+
+    try:
+        asyncio.create_task(_clear())
+    except RuntimeError:
+        _leaving.discard(cid)
+
+
 async def leave_vc(chat_id: int) -> None:
     """
     Leave voice chat and clean the queue (AutoPlay's ON/OFF setting is kept).
@@ -44,7 +59,7 @@ async def leave_vc(chat_id: int) -> None:
         except Exception:
             pass
 
-    _leaving.add(int(chat_id))
+    mark_leaving(chat_id)
     try:
         await call_py.leave_call(chat_id)
 
@@ -56,12 +71,6 @@ async def leave_vc(chat_id: int) -> None:
 
     except Exception as e:
         LOGGER.error(f"Leave VC Error: {e}")
-
-    async def _clear_leaving():
-        await asyncio.sleep(3)
-        _leaving.discard(int(chat_id))
-
-    asyncio.create_task(_clear_leaving())
 
 
 @call_py.on_update(fl.chat_update(ChatUpdate.Status.LEFT_CALL))
