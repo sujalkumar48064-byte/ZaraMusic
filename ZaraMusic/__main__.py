@@ -66,6 +66,36 @@ def _keep_alive() -> None:
         time.sleep(240)  # 4 minutes — Render sleeps after 15 min idle
 
 
+def _wait_for_poll_lock(timeout: int = 90) -> None:
+    """Wait until no other instance is polling this bot token."""
+    url = f"https://api.telegram.org/bot{config.BOT_TOKEN}/getUpdates"
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            resp = requests.get(
+                url,
+                params={"timeout": 0, "limit": 1, "offset": -1},
+                timeout=15,
+            )
+            if resp.status_code == 409:
+                LOGGER.info("Another bot poller is active; waiting for it to stop...")
+                time.sleep(5)
+                continue
+            resp.raise_for_status()
+            LOGGER.info("Telegram poll lock acquired")
+            return
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code == 409:
+                LOGGER.info("Another bot poller is active; waiting for it to stop...")
+                time.sleep(5)
+                continue
+            LOGGER.warning(f"Poll lock check failed: {e}")
+        except Exception as e:
+            LOGGER.warning(f"Poll lock check failed: {e}")
+        time.sleep(5)
+    LOGGER.warning("Poll lock wait timed out; starting bot anyway")
+
+
 # ── Startup notification ──────────────────────────────────────────────────────
 
 
@@ -128,13 +158,9 @@ if __name__ == "__main__":
     LOGGER.info("Keep-alive thread started")
 
     # Render replaces the old instance only after the new health server is up.
-    # Starting the bot immediately makes two pollers share one token; Telegram
-    # then kills one getUpdates loop and the bot stops receiving commands.
-    if config.BOT_START_DELAY > 0:
-        LOGGER.info(
-            f"Waiting {config.BOT_START_DELAY}s for the previous instance to stop..."
-        )
-        time.sleep(config.BOT_START_DELAY)
+    # Never start a second getUpdates poller while the old one is still alive:
+    # Telegram returns 409 Conflict and Pyrogram's update loop exits for good.
+    _wait_for_poll_lock()
 
     # 4. Bot start
     for attempt in range(10):
@@ -326,61 +352,10 @@ if __name__ == "__main__":
     loop.run_until_complete(_notify_owner(me, ASSISTANT_USERNAME, ASSISTANT_ID))
 
 
-# ── Polling guard ─────────────────────────────────────────────────────────────
-
-def _pending_update_count() -> int:
-    resp = requests.get(
-        f"https://api.telegram.org/bot{config.BOT_TOKEN}/getWebhookInfo",
-        timeout=15,
-    )
-    resp.raise_for_status()
-    return int(resp.json().get("result", {}).get("pending_update_count", 0))
-
-
-async def _polling_guard() -> None:
-    """Restart the bot client if Telegram updates stop being consumed.
-
-    During Render deploys the old instance can briefly keep a getUpdates
-    long-poll open. Telegram then rejects the new poller and Pyrogram's update
-    loop exits without reconnecting, so commands silently stop working.
-    """
-    await asyncio.sleep(15)
-    restarts = 0
-    while True:
-        try:
-            pending = await asyncio.to_thread(_pending_update_count)
-            if pending > 5:
-                if restarts < 3:
-                    restarts += 1
-                    LOGGER.warning(
-                        f"Polling guard: {pending} pending updates; restarting bot client "
-                        f"({restarts}/3)"
-                    )
-                    try:
-                        await bot.stop()
-                    except Exception:
-                        pass
-                    await asyncio.sleep(2)
-                    await bot.start()
-                    LOGGER.info("Polling guard: bot client restarted")
-                else:
-                    LOGGER.error(
-                        f"Polling guard: {pending} updates still pending after 3 restarts"
-                    )
-            else:
-                if restarts:
-                    LOGGER.info("Polling guard: updates flowing again")
-                restarts = 0
-        except Exception as e:
-            LOGGER.warning(f"Polling guard check failed: {e}")
-        await asyncio.sleep(45)
-
     # 12. Watchdog
     from ZaraMusic.core.watcher import watchdog
     loop.create_task(watchdog())
     LOGGER.info("Watchdog started")
-    loop.create_task(_polling_guard())
-    LOGGER.info("Polling guard started")
 
     LOGGER.info("ZaraMusic is running")
 
