@@ -24,6 +24,23 @@ _video_cache: dict[str, str] = {}
 _download_locks: dict[str, asyncio.Lock] = {}
 _download_sem: Optional[asyncio.Semaphore] = None
 
+# Small TTL caches: repeat /play for the same query/song must not hit the
+# network again, and direct stream URLs stay valid long enough to reuse.
+_META_CACHE_TTL = 300
+_STREAM_CACHE_TTL = 1800
+_SEARCH_CACHE_TTL = 300
+_meta_cache: dict[str, tuple[float, dict]] = {}
+_stream_cache: dict[str, tuple[float, str]] = {}
+_search_cache: dict[str, tuple[float, object]] = {}
+
+
+def _cache_put(cache: dict, key, value, ttl: int, limit: int = 512) -> None:
+    now = time.time()
+    cache[key] = (now, value)
+    if len(cache) > limit:
+        oldest = min(cache, key=lambda k: cache[k][0])
+        cache.pop(oldest, None)
+
 
 def _download_semaphore() -> asyncio.Semaphore:
     global _download_sem
@@ -343,7 +360,11 @@ async def _merge_av(video_path: str, audio_path: str, out_path: str) -> Optional
 
 
 async def _fetch_invidious(session, video_id: str):
-    for base in INVIDIOUS_APIS:
+    cached = _meta_cache.get(video_id)
+    if cached and time.time() - cached[0] < _META_CACHE_TTL:
+        return cached[1]
+
+    async def _one(base):
         try:
             async with session.get(
                 f"{base}/api/v1/videos/{video_id}",
@@ -352,14 +373,31 @@ async def _fetch_invidious(session, video_id: str):
             ) as resp:
                 if resp.status != 200:
                     logger.warning(f"[invidious] {base}: HTTP {resp.status}")
-                    continue
+                    return None
                 data = await resp.json(content_type=None)
             if not isinstance(data, dict) or data.get("error"):
                 logger.warning(f"[invidious] {base}: {str((data or {}).get('error'))[:120]}")
-                continue
+                return None
             return data
         except Exception as e:
             logger.warning(f"[invidious] {base}: {e}")
+            return None
+
+    # Race the mirrors: a single slow instance must not delay every /play.
+    bases = list(INVIDIOUS_APIS)[:4]
+    if not bases:
+        return None
+    tasks = [asyncio.create_task(_one(base)) for base in bases]
+    try:
+        for task in asyncio.as_completed(tasks):
+            data = await task
+            if data:
+                _cache_put(_meta_cache, video_id, data, _META_CACHE_TTL)
+                return data
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
     return None
 
 
@@ -684,11 +722,12 @@ async def _to_mp3(path: str) -> str:
 
 
 async def download_song(link: str) -> Optional[str]:
-    """Download audio. Returns local file path or None on failure."""
-    path = await _download(link, video=False)
-    if path:
-        path = await _to_mp3(path)
-    return path
+    """Download audio. Returns local file path or None on failure.
+
+    The file is played as m4a/webm directly by ffmpeg inside PyTgCalls; the
+    old unconditional mp3 re-encode only added CPU and startup latency.
+    """
+    return await _download(link, video=False)
 
 
 async def download_video(link: str) -> Optional[str]:
@@ -699,6 +738,37 @@ async def download_video(link: str) -> Optional[str]:
 # ═════════════════════════════════════════════════════════════════════════════
 # PUBLIC — STREAM RESOLVER (backward-compatible)
 # ═════════════════════════════════════════════════════════════════════════════
+
+async def resolve_audio_stream_url(url: str) -> Optional[str]:
+    """Return a directly playable audio URL (no full download) when possible."""
+    if os.path.exists(url) and os.path.isfile(url):
+        return url
+
+    video_id = _extract_video_id(url)
+    if not _ID_RE.match(video_id or ""):
+        return None
+
+    cached = _stream_cache.get(video_id)
+    if cached and time.time() - cached[0] < _STREAM_CACHE_TTL:
+        return cached[1]
+
+    if not INVIDIOUS_APIS:
+        return None
+
+    async with aiohttp.ClientSession() as session:
+        data = await _fetch_invidious(session, video_id)
+    if not data:
+        return None
+
+    picked = _pick_audio(data)
+    if not picked:
+        return None
+
+    direct_url = picked[0]
+    _cache_put(_stream_cache, video_id, direct_url, _STREAM_CACHE_TTL)
+    logger.info(f"[yt] Direct audio stream ready for {video_id}")
+    return direct_url
+
 
 async def resolve_stream(url: str) -> str:
     """Resolve a YouTube URL or video ID to a local audio file path."""
@@ -831,6 +901,18 @@ async def _search_invidious(query: str):
 
 
 async def search_yt(query: str):
+    """Cached wrapper around the YouTube search pipeline."""
+    key = (query or "").strip().lower()
+    cached = _search_cache.get(key)
+    if cached and time.time() - cached[0] < _SEARCH_CACHE_TTL:
+        return cached[1]
+    result = await _search_yt_uncached(query)
+    if result:
+        _cache_put(_search_cache, key, result, _SEARCH_CACHE_TTL, limit=256)
+    return result
+
+
+async def _search_yt_uncached(query: str):
     """Search YouTube for a video or playlist. Returns metadata tuple or playlist dict."""
 
     # ── Playlist ──────────────────────────────────────────────────────────────

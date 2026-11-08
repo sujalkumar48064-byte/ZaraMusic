@@ -66,36 +66,6 @@ def _keep_alive() -> None:
         time.sleep(240)  # 4 minutes — Render sleeps after 15 min idle
 
 
-def _wait_for_poll_lock(timeout: int = 90) -> None:
-    """Wait until no other instance is polling this bot token."""
-    url = f"https://api.telegram.org/bot{config.BOT_TOKEN}/getUpdates"
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            resp = requests.get(
-                url,
-                params={"timeout": 0, "limit": 1, "offset": -1},
-                timeout=15,
-            )
-            if resp.status_code == 409:
-                LOGGER.info("Another bot poller is active; waiting for it to stop...")
-                time.sleep(5)
-                continue
-            resp.raise_for_status()
-            LOGGER.info("Telegram poll lock acquired")
-            return
-        except requests.HTTPError as e:
-            if e.response is not None and e.response.status_code == 409:
-                LOGGER.info("Another bot poller is active; waiting for it to stop...")
-                time.sleep(5)
-                continue
-            LOGGER.warning(f"Poll lock check failed: {e}")
-        except Exception as e:
-            LOGGER.warning(f"Poll lock check failed: {e}")
-        time.sleep(5)
-    LOGGER.warning("Poll lock wait timed out; starting bot anyway")
-
-
 # ── Startup notification ──────────────────────────────────────────────────────
 
 
@@ -156,11 +126,6 @@ if __name__ == "__main__":
     # 3. Keep-alive ping
     threading.Thread(target=_keep_alive, daemon=True).start()
     LOGGER.info("Keep-alive thread started")
-
-    # Render replaces the old instance only after the new health server is up.
-    # Never start a second getUpdates poller while the old one is still alive:
-    # Telegram returns 409 Conflict and Pyrogram's update loop exits for good.
-    _wait_for_poll_lock()
 
     # 4. Bot start
     for attempt in range(10):
