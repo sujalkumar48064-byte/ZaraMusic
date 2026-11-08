@@ -228,8 +228,10 @@ def _pick_audio(data: dict):
 
     m4a = [f for f in formats if "m4a" in kind_of(f) or "mp4" in kind_of(f)]
     webm = [f for f in formats if "webm" in kind_of(f)]
-    pool = m4a or webm or formats
-    target = 128000
+    # Prefer ~80 kbps Opus/WebM: it is noticeably smaller than 128 kbps AAC
+    # (faster first play) and still transparent enough for Telegram VC audio.
+    pool = webm or m4a or formats
+    target = 80000
     best = min(pool, key=lambda f: abs(_bitrate(f) - target))
     url = best.get("url")
     if not url:
