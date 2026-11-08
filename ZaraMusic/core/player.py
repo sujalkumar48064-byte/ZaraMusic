@@ -64,7 +64,6 @@ from richgram import (
 )
 
 from ZaraMusic.utils.youtube import (
-    resolve_audio_stream_url,
     resolve_stream,
     resolve_video_stream,
 )
@@ -494,88 +493,45 @@ async def play_song(
     # ─────────────────────────────────────────
 
     is_video = song.get("video", False)
-    media_path = None
-    direct_stream = False
 
-    async def _download_fallback() -> bool:
-        """Replace a failed direct URL with a real downloaded file."""
-        nonlocal media_path, direct_stream
-        if not direct_stream:
-            return False
+    try:
+        if is_video:
+            media_path = await resolve_video_stream(url)
+        else:
+            media_path = await resolve_stream(url)
+
+    except Exception as e:
         try:
-            if is_video:
-                media_path = await resolve_video_stream(url)
-            else:
-                media_path = await resolve_stream(url)
-        except Exception as e:
-            LOGGER.warning(f"[PLAY] {chat_id}: download fallback failed: {e}")
-            return False
-        direct_stream = False
-        song["file_path"] = media_path
-        try:
-            size = os.path.getsize(media_path)
-        except OSError:
-            size = 0
-        LOGGER.info(
-            f"[PLAY] {chat_id}: fallback downloaded {media_path} ({size} bytes)"
+            _drop_song(chat_id, song)
+        except Exception:
+            pass
+
+        await _fail(
+            rich_heading(lang["download_failed_title"], level=3)
+            + rich_note(f"<code>{rich_esc(e)}</code>"),
         )
-        return True
+        return
 
-    # Fast path: stream the Invidious audio URL directly. This skips the
-    # full download before playback, which was the main source of the slow
-    # "loading" state. Effects need a real file, so they keep the old path.
-    if not is_video:
-        try:
-            from ZaraMusic.modules.effects import effects_active
-            if not effects_active(chat_id):
-                media_path = await resolve_audio_stream_url(url)
-                direct_stream = bool(media_path)
-        except Exception as e:
-            LOGGER.warning(f"[PLAY] direct stream resolve failed: {e}")
-            media_path = None
-            direct_stream = False
-
-    if not media_path:
-        try:
-            if is_video:
-                media_path = await resolve_video_stream(url)
-            else:
-                media_path = await resolve_stream(url)
-        except Exception as e:
-            try:
-                _drop_song(chat_id, song)
-            except Exception:
-                pass
-
-            await _fail(
-                rich_heading(lang["download_failed_title"], level=3)
-                + rich_note(f"<code>{rich_esc(e)}</code>"),
-            )
-            return
-
-    song["file_path"] = "" if direct_stream else media_path
+    song["file_path"] = media_path
 
     if _play_tokens.get(chat_id) != token:
         delete_file(media_path)
         return
 
-    if direct_stream:
+    try:
+        size = os.path.getsize(media_path)
+    except OSError:
         size = 0
-    else:
-        try:
-            size = os.path.getsize(media_path)
-        except OSError:
-            size = 0
     LOGGER.info(
         f"[PLAY] {chat_id}: resolved {'video' if is_video else 'audio'} "
-        f"{'direct-url' if direct_stream else media_path} ({size} bytes)"
+        f"{media_path} ({size} bytes)"
     )
 
     # ─────────────────────────────────────────
     # AUTO EFFECTS
     # ─────────────────────────────────────────
 
-    if not is_video and not direct_stream:
+    if not is_video:
         try:
             from ZaraMusic.modules.effects import maybe_apply_effects
             media_path = await maybe_apply_effects(chat_id, media_path)
@@ -583,7 +539,7 @@ async def play_song(
         except Exception as fx_err:
             LOGGER.warning(f"[Effects] Skipped: {fx_err}")
 
-    song["file_path"] = "" if direct_stream else media_path
+    song["file_path"] = media_path
 
     if _play_tokens.get(chat_id) != token:
         delete_file(media_path)
@@ -663,7 +619,6 @@ async def play_song(
                 except Exception:
                     pass
                 await asyncio.sleep(1)
-                await _download_fallback()
                 continue
 
             try:
@@ -699,7 +654,6 @@ async def play_song(
 
             if attempt == 0:
                 await asyncio.sleep(2)
-                await _download_fallback()
                 continue
 
             try:
@@ -717,12 +671,6 @@ async def play_song(
         except Exception as e:
 
             err = str(e).lower()
-
-            if direct_stream and attempt == 0 and await _download_fallback():
-                LOGGER.info(
-                    f"[PLAY] {chat_id}: direct stream failed; retrying with downloaded file"
-                )
-                continue
 
             vc_missing = any(
                 x in err
