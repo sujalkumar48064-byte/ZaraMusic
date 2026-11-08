@@ -779,6 +779,12 @@ async def play_song(
         await _continue_with_next(chat_id, token, "playback not active")
         return
 
+    try:
+        from ZaraMusic.core.call import clear_stream_end_guard
+        clear_stream_end_guard(chat_id)
+    except Exception:
+        pass
+
     _reset_fail_streak(chat_id)
 
     if _play_tokens.get(chat_id) != token:

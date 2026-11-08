@@ -3,6 +3,7 @@ from pyrogram.enums import ParseMode
 from pyrogram.types import Message
 
 from ZaraMusic import bot
+from ZaraMusic.core.call import mark_stream_end_guard
 from ZaraMusic.core.channels import target_chat
 from ZaraMusic.core.player import bump_play_token, play_song
 from ZaraMusic.core.queue import peek_current, pop_current, queue_lock
@@ -72,6 +73,7 @@ async def skip_cmd(_, message: Message) -> None:
             pass
 
     if nxt:
+        mark_stream_end_guard(chat_id, 30.0)
         try:
             from ZaraMusic.core.autoplay import schedule_prefetch
             schedule_prefetch(chat_id, nxt)

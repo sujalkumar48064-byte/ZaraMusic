@@ -18,12 +18,23 @@ from richgram import rich_esc, rich_heading, rich_kv_table, rich_note, rich_send
 
 _leaving: set[int] = set()
 _last_stream_end: dict[int, float] = {}
+_stream_end_guard: dict[int, float] = {}
+
+
+def mark_stream_end_guard(chat_id: int, seconds: float = 30.0) -> None:
+    """Ignore stream-end events while a stream is being replaced."""
+    _stream_end_guard[int(chat_id)] = time.monotonic() + seconds
+
+
+def clear_stream_end_guard(chat_id: int) -> None:
+    _stream_end_guard.pop(int(chat_id), None)
 
 
 def mark_leaving(chat_id: int) -> None:
     """Suppress the matching call-left update after an intentional leave."""
     cid = int(chat_id)
     _leaving.add(cid)
+    mark_stream_end_guard(cid, 5.0)
 
     async def _clear():
         await asyncio.sleep(3)
@@ -155,6 +166,9 @@ async def on_stream_end(_: object, update: StreamEnded) -> None:
     # track is being resolved. Ignoring the duplicate prevents it from
     # popping the next queue item and starting two streams at once.
     now = time.monotonic()
+    if now < _stream_end_guard.get(chat_id, 0.0):
+        LOGGER.info(f"[VC] Ignoring stream-end during stream replacement in {chat_id}")
+        return
     if now - _last_stream_end.get(chat_id, 0.0) < 2.0:
         LOGGER.info(f"[VC] Ignoring duplicate stream-end in {chat_id}")
         return
