@@ -13,6 +13,7 @@ from ntgcalls import TelegramServerError
 from pytgcalls.exceptions import NoActiveGroupCall
 from pytgcalls.types import (
     AudioQuality,
+    Call,
     MediaStream,
     VideoQuality,
     ChatUpdate,
@@ -785,6 +786,38 @@ async def play_song(
             return
 
     if not played:
+        return
+
+    # play() returning only means the join request finished. Confirm the
+    # stream is actually ACTIVE before telling the user it is playing.
+    confirmed = False
+    for _ in range(3):
+        try:
+            active_calls = await asyncio.wait_for(call_py.calls, timeout=5)
+            active = active_calls.get(chat_id)
+            if active is not None and active.playback == Call.Status.ACTIVE:
+                confirmed = True
+                break
+        except Exception as e:
+            LOGGER.warning(f"[PLAY] {chat_id}: active-call check failed: {e}")
+        await asyncio.sleep(1)
+
+    LOGGER.info(f"[PLAY] {chat_id}: playback confirmed={confirmed}")
+
+    if not confirmed:
+        try:
+            await asyncio.wait_for(call_py.leave_call(chat_id), timeout=10)
+        except Exception:
+            pass
+        try:
+            _drop_song(chat_id, song, keep_file=not direct_stream)
+        except Exception:
+            pass
+        await _fail(
+            rich_heading(lang["effects_playback_failed_title"], level=3)
+            + rich_note("Playback did not start. Please try again."),
+        )
+        await _continue_with_next(chat_id, token, "playback not active")
         return
 
     _reset_fail_streak(chat_id)
