@@ -554,14 +554,18 @@ async def _download_via_free(video_id: str, video: bool) -> Optional[str]:
 
     deadline = time.monotonic() + FREE_SOURCE_BUDGET
 
+    if not video:
+        # Invidious is often rate-limited/403 on this host; the smaller
+        # multimp3 source is currently the faster reliable audio path.
+        got = await _run_source("multimp3", _download_via_multimp3, deadline, video_id)
+        if got:
+            return got
+
     got = await _run_source("invidious", _download_via_invidious, deadline, video_id, video)
     if got:
         return got
 
     if not video:
-        got = await _run_source("multimp3", _download_via_multimp3, deadline, video_id)
-        if got:
-            return got
         got = await _run_source("samplecut", _download_via_samplecut, deadline, video_id)
         if got:
             return got
