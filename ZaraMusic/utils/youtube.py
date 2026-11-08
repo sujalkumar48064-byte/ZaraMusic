@@ -228,10 +228,10 @@ def _pick_audio(data: dict):
 
     m4a = [f for f in formats if "m4a" in kind_of(f) or "mp4" in kind_of(f)]
     webm = [f for f in formats if "webm" in kind_of(f)]
-    # Prefer ~80 kbps Opus/WebM: it is noticeably smaller than 128 kbps AAC
-    # (faster first play) and still transparent enough for Telegram VC audio.
+    # Prefer ~96 kbps Opus/WebM: smaller than 128 kbps AAC (faster first
+    # play) while staying clean enough for Telegram voice-chat audio.
     pool = webm or m4a or formats
-    target = 80000
+    target = 96000
     best = min(pool, key=lambda f: abs(_bitrate(f) - target))
     url = best.get("url")
     if not url:
@@ -453,7 +453,7 @@ async def _download_via_invidious(video_id: str, video: bool) -> Optional[str]:
 
 async def _download_via_multimp3(video_id: str) -> Optional[str]:
     path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
-    payload = {"url": f"https://www.youtube.com/watch?v={video_id}", "quality": "128"}
+    payload = {"url": f"https://www.youtube.com/watch?v={video_id}", "quality": "96"}
     try:
         async with aiohttp.ClientSession() as session:
             for attempt in range(1, 2):
