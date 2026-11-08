@@ -803,22 +803,15 @@ async def play_song(
         await asyncio.sleep(1)
 
     LOGGER.info(f"[PLAY] {chat_id}: playback confirmed={confirmed}")
-
     if not confirmed:
         try:
-            await asyncio.wait_for(call_py.leave_call(chat_id), timeout=10)
-        except Exception:
-            pass
-        try:
-            _drop_song(chat_id, song, keep_file=not direct_stream)
-        except Exception:
-            pass
-        await _fail(
-            rich_heading(lang["effects_playback_failed_title"], level=3)
-            + rich_note("Playback did not start. Please try again."),
-        )
-        await _continue_with_next(chat_id, token, "playback not active")
-        return
+            calls_now = await asyncio.wait_for(call_py.calls, timeout=5)
+            LOGGER.info(
+                f"[PLAY] {chat_id}: calls="
+                + str([(k, str(v.playback), str(v.capture)) for k, v in calls_now.items()])
+            )
+        except Exception as e:
+            LOGGER.warning(f"[PLAY] {chat_id}: calls diagnostic failed: {e}")
 
     _reset_fail_streak(chat_id)
 
