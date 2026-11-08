@@ -501,6 +501,7 @@ async def play_song(
             media_path = await resolve_stream(url)
 
     except Exception as e:
+        LOGGER.warning(f"[PLAY] {chat_id}: resolve failed: {e}")
         try:
             _drop_song(chat_id, song)
         except Exception:
