@@ -108,7 +108,7 @@ BOT_DESCRIPTION = (
 )
 
 # ── Limits ────────────────────────────────────────────────────────────────────
-MAX_DURATION_SECONDS = 1800   # 30 minutes
+MAX_DURATION_SECONDS = int(os.getenv("MAX_DURATION_SECONDS", "10800"))  # 3 hours
 QUEUE_LIMIT          = 20
 COOLDOWN             = 10     # seconds between /play per chat
 

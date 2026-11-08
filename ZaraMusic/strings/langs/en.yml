@@ -249,10 +249,10 @@ kv_seeked_to: "sᴇᴇᴋᴇᴅ ᴛᴏ"
 loading_title: "❍ ʟᴏᴀᴅɪɴɢ..."
 vc_start_failed_server_title: "❍ ᴠᴄ sᴛᴀʀᴛ ғᴀɪʟᴇᴅ (Telegram Server)"
 vc_perm_missing_title: "❍ ᴠᴄ sᴛᴀʀᴛ ᴘᴇʀᴍɪssɪᴏɴ ᴍɪssɪɴɢ"
-vc_perm_missing_note: "ᴍᴀᴋᴇ ᴛʜᴇ ʙᴏᴛ ᴀᴅᴍɪɴ » ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏ ᴄʜᴀᴛs + ɪɴᴠɪᴛᴇ ᴜsᴇʀs · ᴀssɪsᴛᴀɴᴛ ᴀᴜᴛᴏ-ᴘʀᴏᴍᴏᴛᴇᴅ"
+vc_perm_missing_note: "sᴛᴀʀᴛ ᴀ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ ɪɴ ᴛʜᴇ ɢʀᴏᴜᴘ ғɪʀsᴛ · ɪғ ᴛʜᴇ ɢʀᴏᴜᴘ ʀᴇsᴛʀɪᴄᴛs ᴠᴄ ᴛᴏ ᴀᴅᴍɪɴs, ɢʀᴀɴᴛ ᴛʜᴇ ᴀssɪsᴛᴀɴᴛ ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏ ᴄʜᴀᴛs ᴏɴᴄᴇ · ɴᴏ ʀᴇᴘᴇᴀᴛᴇᴅ ᴘʀᴏᴍᴏᴛɪᴏɴ"
 vc_start_failed_title: "❍ ᴠᴄ sᴛᴀʀᴛ ғᴀɪʟᴇᴅ"
 playback_failed_server_title: "❍ ᴘʟᴀʏʙᴀᴄᴋ ғᴀɪʟᴇᴅ (Telegram Server)"
-playback_perm_missing_note: "ᴍᴀᴋᴇ ᴛʜᴇ ʙᴏᴛ ᴀᴅᴍɪɴ » ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏ ᴄʜᴀᴛs + ɪɴᴠɪᴛᴇ ᴜsᴇʀs · ᴀssɪsᴛᴀɴᴛ ᴀᴜᴛᴏ-ᴘʀᴏᴍᴏᴛᴇᴅ"
+playback_perm_missing_note: "sᴛᴀʀᴛ ᴛʜᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ ʏᴏᴜʀsᴇʟғ, ᴏʀ ɢʀᴀɴᴛ ᴛʜᴇ ᴀssɪsᴛᴀɴᴛ ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏ ᴄʜᴀᴛs ᴏɴᴄᴇ · ɴᴏ ʀᴇᴘᴇᴀᴛᴇᴅ ᴘʀᴏᴍᴏᴛɪᴏɴ"
 
 # ── /gblock, /gunblock, /ublock, /uunblock, /blocklist (owner only) ──────────
 block_invalid_chat_id_title: "❍ ɪɴᴠᴀʟɪᴅ ᴄʜᴀᴛ ɪᴅ"

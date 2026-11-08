@@ -248,10 +248,10 @@ kv_seeked_to: "सीक किया गया"
 loading_title: "❍ लोड हो रहा है..."
 vc_start_failed_server_title: "❍ वीसी शुरू करना विफल (Telegram Server)"
 vc_perm_missing_title: "❍ वीसी शुरू करने की अनुमति नहीं है"
-vc_perm_missing_note: "बॉट को एडमिन बनाएं » वीडियो चैट मैनेज करें + यूज़र्स इनवाइट करें · असिस्टेंट अपने आप एडमिन हो जाएगा"
+vc_perm_missing_note: "पहले ग्रुप में वॉइस चैट शुरू करें। अगर ग्रुप वीसी को एडमिन तक सीमित रखता है, तो असिस्टेंट को एक बार Manage Video Chats दें। बार-बार प्रोमोट की जरूरत नहीं।"
 vc_start_failed_title: "❍ वीसी शुरू करना विफल"
 playback_failed_server_title: "❍ प्लेबैक विफल (Telegram Server)"
-playback_perm_missing_note: "बॉट को एडमिन बनाएं » वीडियो चैट मैनेज करें + यूज़र्स इनवाइट करें · असिस्टेंट अपने आप एडमिन हो जाएगा"
+playback_perm_missing_note: "वॉइस चैट खुद शुरू करें, या असिस्टेंट को एक बार Manage Video Chats दें। बार-बार प्रोमोट की जरूरत नहीं।"
 
 # ── /gblock, /gunblock, /ublock, /uunblock, /blocklist (owner only) ──────────
 block_invalid_chat_id_title: "❍ अमान्य चैट आईडी"

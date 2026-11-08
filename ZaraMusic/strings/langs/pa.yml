@@ -248,10 +248,10 @@ kv_seeked_to: "ਸੀਕ ਕੀਤਾ ਗਿਆ"
 loading_title: "❍ ਲੋਡ ਹੋ ਰਿਹਾ ਹੈ..."
 vc_start_failed_server_title: "❍ ਵੀਸੀ ਸ਼ੁਰੂ ਕਰਨਾ ਅਸਫਲ (Telegram Server)"
 vc_perm_missing_title: "❍ ਵੀਸੀ ਸ਼ੁਰੂ ਕਰਨ ਦੀ ਇਜਾਜ਼ਤ ਨਹੀਂ ਹੈ"
-vc_perm_missing_note: "ਬੋਟ ਨੂੰ ਐਡਮਿਨ ਬਣਾਓ » ਵੀਡੀਓ ਚੈਟ ਮੈਨੇਜ ਕਰੋ + ਯੂਜ਼ਰਸ ਇਨਵਾਈਟ ਕਰੋ · ਅਸਿਸਟੈਂਟ ਆਪਣੇ ਆਪ ਐਡਮਿਨ ਹੋ ਜਾਵੇਗਾ"
+vc_perm_missing_note: "ਪਹਿਲਾਂ ਗਰੁੱਪ ਵਿੱਚ ਵਾਇਸ ਚੈਟ ਸ਼ੁਰੂ ਕਰੋ। ਜੇ ਗਰੁੱਪ ਵੀਸੀ ਨੂੰ ਐਡਮਿਨ ਤੱਕ ਸੀਮਿਤ ਰੱਖਦਾ ਹੈ, ਤਾਂ ਅਸਿਸਟੈਂਟ ਨੂੰ ਇੱਕ ਵਾਰ Manage Video Chats ਦਿਓ। ਵਾਰ-ਵਾਰ ਪ੍ਰੋਮੋਟ ਦੀ ਲੋੜ ਨਹੀਂ।"
 vc_start_failed_title: "❍ ਵੀਸੀ ਸ਼ੁਰੂ ਕਰਨਾ ਅਸਫਲ"
 playback_failed_server_title: "❍ ਪਲੇਬੈਕ ਅਸਫਲ (Telegram Server)"
-playback_perm_missing_note: "ਬੋਟ ਨੂੰ ਐਡਮਿਨ ਬਣਾਓ » ਵੀਡੀਓ ਚੈਟ ਮੈਨੇਜ ਕਰੋ + ਯੂਜ਼ਰਸ ਇਨਵਾਈਟ ਕਰੋ · ਅਸਿਸਟੈਂਟ ਆਪਣੇ ਆਪ ਐਡਮਿਨ ਹੋ ਜਾਵੇਗਾ"
+playback_perm_missing_note: "ਵਾਇਸ ਚੈਟ ਖੁਦ ਸ਼ੁਰੂ ਕਰੋ, ਜਾਂ ਅਸਿਸਟੈਂਟ ਨੂੰ ਇੱਕ ਵਾਰ Manage Video Chats ਦਿਓ। ਵਾਰ-ਵਾਰ ਪ੍ਰੋਮੋਟ ਦੀ ਲੋੜ ਨਹੀਂ।"
 
 # ── /gblock, /gunblock, /ublock, /uunblock, /blocklist (owner only) ──────────
 block_invalid_chat_id_title: "❍ ਗਲਤ ਚੈਟ ਆਈਡੀ"

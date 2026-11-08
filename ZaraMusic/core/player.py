@@ -5,7 +5,7 @@ import time
 
 from pyrogram.enums import ParseMode
 from pyrogram.raw.functions.phone import CreateGroupCall
-from pyrogram.types import ChatAdministratorRights, Message
+from pyrogram.types import Message
 
 from pytgcalls import PyTgCalls
 from pytgcalls import filters as fl
@@ -217,146 +217,6 @@ async def _fail_status(chat_id: int, status_message, content: str) -> None:
         pass
 
 
-async def _ensure_assistant_admin(chat_id: int) -> bool:
-    """Ensure the assistant has VC admin rights; promote it through the bot when possible."""
-
-    chat_id = int(chat_id)
-
-    try:
-        me = assistant.me or await assistant.get_me()
-        aid = me.id
-    except Exception as e:
-        LOGGER.warning(f"[VC] assistant identity failed: {e}")
-        return False
-
-    async def _lookup_member():
-        try:
-            member = await assistant.get_chat_member(chat_id, aid)
-            if member is not None:
-                return member
-        except Exception:
-            pass
-        try:
-            return await bot.get_chat_member(chat_id, aid)
-        except Exception:
-            return None
-
-    async def _cache_assistant_peer():
-        # Bots can only resolve a raw user id after seeing that user's access hash.
-        try:
-            query = me.first_name or ""
-            async for found in bot.get_chat_members(chat_id, query=query, limit=20):
-                if getattr(getattr(found, "user", None), "id", None) == aid:
-                    break
-        except Exception as e:
-            LOGGER.warning(f"[VC] assistant lookup failed: {e}")
-
-    def _has_vc_rights(member) -> bool:
-        if member is None:
-            return False
-        status = str(getattr(member, "status", "")).lower()
-        if "owner" in status or "creator" in status:
-            return True
-        priv = getattr(member, "privileges", None)
-        return (
-            "administrator" in status
-            and bool(getattr(priv, "can_manage_video_chats", False))
-        )
-
-    member = await _lookup_member()
-    if _has_vc_rights(member):
-        return True
-
-    try:
-        bot_member = await bot.get_chat_member(chat_id, "me")
-    except Exception:
-        bot_member = None
-
-    bot_status = str(getattr(bot_member, "status", "")).lower()
-    bot_admin = bot_status in ("administrator", "creator", "owner")
-
-    if not bot_admin:
-        LOGGER.warning(
-            f"[VC] Bot is not admin in {chat_id}; cannot auto-promote assistant. "
-            "Make the bot admin with Manage Video Chats + Invite Users."
-        )
-        # Last resort: if the assistant is already an admin with promote rights,
-        # let it try to grant itself the VC right.
-        priv = getattr(member, "privileges", None)
-        if (
-            member is not None
-            and "administrator" in str(getattr(member, "status", "")).lower()
-            and bool(getattr(priv, "can_promote_members", False))
-        ):
-            try:
-                await assistant.promote_chat_member(
-                    chat_id,
-                    aid,
-                    privileges=ChatAdministratorRights(
-                        can_manage_chat=True,
-                        can_manage_video_chats=True,
-                        can_invite_users=True,
-                    ),
-                )
-                LOGGER.info(f"[VC] Assistant updated its own rights in {chat_id}")
-                await asyncio.sleep(1)
-                return True
-            except Exception as e:
-                LOGGER.warning(f"[VC] assistant self-promote failed: {e}")
-        return False
-
-    if member is None:
-        joined = False
-        link = None
-        try:
-            link = await bot.create_chat_invite_link(chat_id, member_limit=1)
-            await assistant.join_chat(link.invite_link)
-            joined = True
-            LOGGER.info(f"[VC] Assistant joined {chat_id}")
-        except Exception as e:
-            LOGGER.warning(f"[VC] assistant invite-join failed: {e}")
-        finally:
-            if link is not None:
-                try:
-                    await bot.revoke_chat_invite_link(chat_id, link.invite_link)
-                except Exception:
-                    pass
-
-        if not joined:
-            # Public groups can be joined without an invite link.
-            try:
-                chat = await bot.get_chat(chat_id)
-                username = getattr(chat, "username", None)
-                if username:
-                    await assistant.join_chat(f"@{username}")
-                    joined = True
-                    LOGGER.info(f"[VC] Assistant joined public group {chat_id}")
-            except Exception as e:
-                LOGGER.warning(f"[VC] assistant public join failed: {e}")
-
-        await _cache_assistant_peer()
-        member = await _lookup_member()
-        if _has_vc_rights(member):
-            return True
-
-    try:
-        await bot.promote_chat_member(
-            chat_id,
-            aid,
-            privileges=ChatAdministratorRights(
-                can_manage_chat=True,
-                can_manage_video_chats=True,
-                can_invite_users=True,
-            ),
-        )
-        LOGGER.info(f"[VC] Assistant promoted in {chat_id}")
-        await asyncio.sleep(1)
-        return True
-    except Exception as e:
-        LOGGER.warning(f"[VC] assistant promote failed: {e}")
-        return False
-
-
 async def _create_vc(chat_id: int) -> None:
     chat = await assistant.get_chat(chat_id)
     await assistant.invoke(
@@ -371,7 +231,6 @@ async def _ensure_vc(chat_id: int, status_message=None) -> bool:
 
     lang = chat_strings(chat_id)
     chat_id = int(chat_id)
-    last_err = None
 
     try:
         await asyncio.wait_for(_create_vc(chat_id), timeout=15)
@@ -379,70 +238,28 @@ async def _ensure_vc(chat_id: int, status_message=None) -> bool:
         await asyncio.sleep(1)
         return True
     except Exception as e:
-        last_err = e
         err = str(e).lower()
         if "already" in err or "groupcall_already_started" in err:
             LOGGER.info(f"[VC] Already active in {chat_id}")
             return True
+        last_err = e
 
+    # Never auto-promote the assistant. If a voice chat already exists the
+    # assistant can join as a normal member; if it does not exist, the user
+    # starts it once from Telegram (or grants the assistant VC rights once).
     err = str(last_err or "").lower()
-    need_fix = any(
-        x in err
-        for x in (
-            "admin",
-            "participant",
-            "channel_private",
-            "not_in_chat",
-        )
-    )
-
-    if need_fix:
-        try:
-            fixed = await asyncio.wait_for(
-                _ensure_assistant_admin(chat_id),
-                timeout=20,
-            )
-        except Exception:
-            fixed = False
-    else:
-        fixed = False
-
-    if fixed:
-        try:
-            await asyncio.wait_for(_create_vc(chat_id), timeout=15)
-            LOGGER.info(f"[VC] Created in {chat_id} after assistant setup")
-            await asyncio.sleep(1)
-            return True
-        except Exception as e:
-            last_err = e
-            err = str(e).lower()
-            if "already" in err or "groupcall_already_started" in err:
-                LOGGER.info(f"[VC] Already active in {chat_id}")
-                return True
-            LOGGER.warning(f"[VC] create after assistant setup failed: {e}")
-
-    err = str(last_err or "").lower()
-
-    if "chat_admin_required" in err or "admin" in err:
-        await _fail_status(
-            chat_id,
-            status_message,
+    if any(x in err for x in ("admin", "permission", "participant", "not_in_chat", "forbidden")):
+        content = (
             rich_heading(lang["vc_perm_missing_title"], level=3)
-            + rich_note(lang["vc_perm_missing_note"]),
+            + rich_note(lang["vc_perm_missing_note"])
         )
-        return False
-
-    err_text = (
-        "Voice chat start timed out"
-        if isinstance(last_err, asyncio.TimeoutError)
-        else str(last_err)
-    )
-    await _fail_status(
-        chat_id,
-        status_message,
-        rich_heading(lang["vc_start_failed_title"], level=3)
-        + rich_note(f"<code>{rich_esc(err_text)}</code>"),
-    )
+    else:
+        content = (
+            rich_heading(lang["vc_start_failed_title"], level=3)
+            + rich_note(f"<code>{rich_esc(last_err)}</code>")
+        )
+    await _fail_status(chat_id, status_message, content)
+    LOGGER.warning(f"[VC] Cannot start VC in {chat_id}: {last_err}")
     return False
 
 
@@ -511,6 +328,7 @@ async def play_song(
             rich_heading(lang["download_failed_title"], level=3)
             + rich_note(f"<code>{rich_esc(e)}</code>"),
         )
+        await _continue_with_next(chat_id, token, "resolve failed")
         return
 
     song["file_path"] = media_path

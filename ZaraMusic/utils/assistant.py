@@ -48,7 +48,10 @@ async def try_join_assistant(chat_id: int, pm: Message) -> bool:
             rich_heading("❍ ʙᴏᴛ ᴀᴅᴍɪɴ ɴᴇᴇᴅᴇᴅ", level=3)
             + rich_note(
                 "<p>ᴍᴀᴋᴇ ᴛʜᴇ <b>ʙᴏᴛ</b> ᴀᴅᴍɪɴ ᴡɪᴛʜ "
-                "<b>ɪɴᴠɪᴛᴇ ᴜsᴇʀs</b> + <b>ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏ ᴄʜᴀᴛs</b>.</p>"
+                "<b>ɪɴᴠɪᴛᴇ ᴜsᴇʀs</b>, ᴏʀ ᴀᴅᴅ ᴛʜᴇ ᴀssɪsᴛᴀɴᴛ "
+                "ᴛᴏ ᴛʜɪs ɢʀᴏᴜᴘ ᴍᴀɴᴜᴀʟʟʏ.</p>"
+                "<p>ᴀssɪsᴛᴀɴᴛ ᴀᴅᴍɪɴ ɪs ɴᴏᴛ ʀᴇǫᴜɪʀᴇᴅ ғᴏʀ ᴀɴ "
+                "ᴇxɪsᴛɪɴɢ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ.</p>"
                 f"<p><code>{rich_esc(e)}</code></p>"
             ),
         )
