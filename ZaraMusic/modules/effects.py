@@ -234,14 +234,6 @@ async def apply_effects_now(chat_id: int, message: Message, *, seek_sec: int = -
 
 # ── Auto-apply effects (called from player.py) ────────────────────────────────
 
-def effects_active(chat_id: int) -> bool:
-    """True only when an effect would actually change the audio."""
-    state = _get(chat_id)
-    return bool(state.get("enabled", False)) and (
-        state.get("speed", 1.0) != 1.0 or state.get("bass", 0) != 0
-    )
-
-
 async def maybe_apply_effects(chat_id: int, file_path: str) -> str:
     state = _get(chat_id)
     if not state.get("enabled", False):

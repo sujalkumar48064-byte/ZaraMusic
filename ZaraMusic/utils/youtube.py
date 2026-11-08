@@ -27,10 +27,8 @@ _download_sem: Optional[asyncio.Semaphore] = None
 # Small TTL caches: repeat /play for the same query/song must not hit the
 # network again, and direct stream URLs stay valid long enough to reuse.
 _META_CACHE_TTL = 300
-_STREAM_CACHE_TTL = 1800
 _SEARCH_CACHE_TTL = 300
 _meta_cache: dict[str, tuple[float, dict]] = {}
-_stream_cache: dict[str, tuple[float, str]] = {}
 _search_cache: dict[str, tuple[float, object]] = {}
 
 
@@ -738,37 +736,6 @@ async def download_video(link: str) -> Optional[str]:
 # ═════════════════════════════════════════════════════════════════════════════
 # PUBLIC — STREAM RESOLVER (backward-compatible)
 # ═════════════════════════════════════════════════════════════════════════════
-
-async def resolve_audio_stream_url(url: str) -> Optional[str]:
-    """Return a directly playable audio URL (no full download) when possible."""
-    if os.path.exists(url) and os.path.isfile(url):
-        return url
-
-    video_id = _extract_video_id(url)
-    if not _ID_RE.match(video_id or ""):
-        return None
-
-    cached = _stream_cache.get(video_id)
-    if cached and time.time() - cached[0] < _STREAM_CACHE_TTL:
-        return cached[1]
-
-    if not INVIDIOUS_APIS:
-        return None
-
-    async with aiohttp.ClientSession() as session:
-        data = await _fetch_invidious(session, video_id)
-    if not data:
-        return None
-
-    picked = _pick_audio(data)
-    if not picked:
-        return None
-
-    direct_url = picked[0]
-    _cache_put(_stream_cache, video_id, direct_url, _STREAM_CACHE_TTL)
-    logger.info(f"[yt] Direct audio stream ready for {video_id}")
-    return direct_url
-
 
 async def resolve_stream(url: str) -> str:
     """Resolve a YouTube URL or video ID to a local audio file path."""

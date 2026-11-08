@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 from pytgcalls import filters as fl
 from ntgcalls import TelegramServerError
@@ -16,6 +17,7 @@ from richgram import rich_esc, rich_heading, rich_kv_table, rich_note, rich_send
 
 
 _leaving: set[int] = set()
+_last_stream_end: dict[int, float] = {}
 
 
 def mark_leaving(chat_id: int) -> None:
@@ -148,6 +150,15 @@ async def on_stream_end(_: object, update: StreamEnded) -> None:
 
     chat_id = update.chat_id
     lang = chat_strings(chat_id)
+
+    # Telegram can deliver duplicate/stale stream-end updates while the next
+    # track is being resolved. Ignoring the duplicate prevents it from
+    # popping the next queue item and starting two streams at once.
+    now = time.monotonic()
+    if now - _last_stream_end.get(chat_id, 0.0) < 2.0:
+        LOGGER.info(f"[VC] Ignoring duplicate stream-end in {chat_id}")
+        return
+    _last_stream_end[chat_id] = now
 
     # Remove finished song
     async with queue_lock(chat_id):

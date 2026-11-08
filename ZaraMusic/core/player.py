@@ -739,11 +739,13 @@ async def play_song(
     # play() returning only means the join request finished. Confirm the
     # stream is actually ACTIVE before telling the user it is playing.
     confirmed = False
-    for _ in range(3):
+    for _ in range(6):
         try:
             active_calls = await asyncio.wait_for(call_py.calls, timeout=5)
             active = active_calls.get(chat_id)
-            if active is not None and active.playback == Call.Status.ACTIVE:
+            # For a bot stream the outgoing media is exposed as "capture";
+            # "playback" is the incoming side and stays IDLE.
+            if active is not None and active.capture == Call.Status.ACTIVE:
                 confirmed = True
                 break
         except Exception as e:
@@ -751,6 +753,7 @@ async def play_song(
         await asyncio.sleep(1)
 
     LOGGER.info(f"[PLAY] {chat_id}: playback confirmed={confirmed}")
+
     if not confirmed:
         try:
             calls_now = await asyncio.wait_for(call_py.calls, timeout=5)
@@ -760,6 +763,21 @@ async def play_song(
             )
         except Exception as e:
             LOGGER.warning(f"[PLAY] {chat_id}: calls diagnostic failed: {e}")
+
+        try:
+            await asyncio.wait_for(call_py.leave_call(chat_id), timeout=10)
+        except Exception:
+            pass
+        try:
+            _drop_song(chat_id, song)
+        except Exception:
+            pass
+        await _fail(
+            rich_heading(lang["effects_playback_failed_title"], level=3)
+            + rich_note("Playback did not start. Please try again."),
+        )
+        await _continue_with_next(chat_id, token, "playback not active")
+        return
 
     _reset_fail_streak(chat_id)
 
