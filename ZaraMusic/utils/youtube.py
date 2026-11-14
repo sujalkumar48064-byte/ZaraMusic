@@ -231,7 +231,7 @@ def _pick_audio(data: dict):
     # Prefer ~96 kbps Opus/WebM: smaller than 128 kbps AAC (faster first
     # play) while staying clean enough for Telegram voice-chat audio.
     pool = webm or m4a or formats
-    target = 96000
+    target = max(32000, int(AUDIO_BITRATE))
     best = min(pool, key=lambda f: abs(_bitrate(f) - target))
     url = best.get("url")
     if not url:
@@ -451,9 +451,10 @@ async def _download_via_invidious(video_id: str, video: bool) -> Optional[str]:
             _cleanup(apath)
 
 
-async def _download_via_multimp3(video_id: str) -> Optional[str]:
-    path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
-    payload = {"url": f"https://www.youtube.com/watch?v={video_id}", "quality": "96"}
+async def _download_via_multimp3(video_id: str, path: Optional[str] = None) -> Optional[str]:
+    path = path or os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
+    quality = str(max(48, int(AUDIO_BITRATE) // 1000))
+    payload = {"url": f"https://www.youtube.com/watch?v={video_id}", "quality": quality}
     try:
         async with aiohttp.ClientSession() as session:
             for attempt in range(1, 2):
@@ -479,8 +480,8 @@ async def _download_via_multimp3(video_id: str) -> Optional[str]:
     return None
 
 
-async def _download_via_samplecut(video_id: str) -> Optional[str]:
-    path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
+async def _download_via_samplecut(video_id: str, path: Optional[str] = None) -> Optional[str]:
+    path = path or os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
     payload = {"url": f"https://www.youtube.com/watch?v={video_id}", "format": "mp3"}
     try:
         async with aiohttp.ClientSession() as session:
@@ -506,9 +507,9 @@ async def _download_via_samplecut(video_id: str) -> Optional[str]:
         return None
 
 
-async def _download_via_freeapi(video_id: str, video: bool) -> Optional[str]:
+async def _download_via_freeapi(video_id: str, video: bool, path: Optional[str] = None) -> Optional[str]:
     ext = ".mp4" if video else ".mp3"
-    path = os.path.join(DOWNLOAD_DIR, f"{video_id}{ext}")
+    path = path or os.path.join(DOWNLOAD_DIR, f"{video_id}{ext}")
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
@@ -548,15 +549,100 @@ async def _run_source(name: str, fn, deadline: float, *args):
         return None
 
 
+async def _download_via_free_race(video_id: str) -> Optional[str]:
+    """Hedge free audio mirrors; first valid file wins, losers are cancelled."""
+    if not FREE_SOURCE_RACE:
+        return None
+
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    stamp = f"{video_id}.{os.getpid()}.{int(time.time() * 1000)}"
+    specs = [
+        ("multimp3", 0.0, _download_via_multimp3,
+         os.path.join(DOWNLOAD_DIR, f".{stamp}.multimp3.mp3")),
+        ("freeapi", FREE_HEDGE_DELAY, _download_via_freeapi,
+         os.path.join(DOWNLOAD_DIR, f".{stamp}.freeapi.mp3")),
+        ("samplecut", FREE_HEDGE_DELAY * 2, _download_via_samplecut,
+         os.path.join(DOWNLOAD_DIR, f".{stamp}.samplecut.mp3")),
+    ]
+
+    async def _run(delay, fn, path):
+        if delay > 0:
+            await asyncio.sleep(delay)
+        if fn is _download_via_freeapi:
+            return await fn(video_id, False, path)
+        return await fn(video_id, path)
+
+    tasks = {
+        asyncio.create_task(_run(delay, fn, path)): (name, path)
+        for name, delay, fn, path in specs
+    }
+    pending = set(tasks)
+    winner = None
+    winner_name = ""
+    started = time.monotonic()
+    try:
+        while pending:
+            done, pending = await asyncio.wait(
+                pending, return_when=asyncio.FIRST_COMPLETED
+            )
+            for task in done:
+                name, _path = tasks[task]
+                try:
+                    got = task.result()
+                except asyncio.CancelledError:
+                    continue
+                except Exception as e:
+                    logger.warning(f"[free:race] {name}: {e}")
+                    continue
+                if got:
+                    winner = got
+                    winner_name = name
+                    break
+            if winner:
+                break
+    finally:
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    if winner:
+        ext = os.path.splitext(winner)[1] or ".mp3"
+        final = os.path.join(DOWNLOAD_DIR, f"{video_id}{ext}")
+        try:
+            os.replace(winner, final)
+            winner = final
+        except OSError as e:
+            logger.warning(f"[free:race] finalize failed: {e}")
+        logger.info(
+            f"[free:race] {video_id}: winner={winner_name} "
+            f"in {time.monotonic() - started:.1f}s"
+        )
+
+    for _name, path in tasks.values():
+        if path != winner:
+            _cleanup(path)
+            _cleanup(path + ".part")
+    return winner
+
+
 async def _download_via_free(video_id: str, video: bool) -> Optional[str]:
     if not FREE_API_FALLBACK:
         return None
 
     deadline = time.monotonic() + FREE_SOURCE_BUDGET
 
+    if not video and FREE_SOURCE_RACE:
+        got = await _run_source("race", _download_via_free_race, deadline, video_id)
+        if got:
+            return got
+        # Invidious was intentionally left out of the race: its media URLs
+        # are often IP-bound/403, but it is still worth one final try.
+        return await _run_source(
+            "invidious", _download_via_invidious, deadline, video_id, video
+        )
+
     if not video:
-        # Invidious is often rate-limited/403 on this host; the smaller
-        # multimp3 source is currently the faster reliable audio path.
         got = await _run_source("multimp3", _download_via_multimp3, deadline, video_id)
         if got:
             return got

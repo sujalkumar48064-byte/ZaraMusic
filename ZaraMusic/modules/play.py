@@ -248,47 +248,59 @@ async def _process_play(message: Message, query: str, video: bool = False, chat_
         await rich_edit(pm, _queue_full_content(lang))
         return
 
-    # Assistant check — uses utils/assistant.py
-    status = await is_assistant_in(chat_id)
-    LOGGER.info(f"[PLAY] assistant status in {chat_id}: {status!r}")
-
-    if status == "banned":
-        await rich_edit(
-            pm,
-            rich_heading(lang["play_assistant_banned_title"], level=3)
-            + rich_note(lang["play_assistant_banned_note"]),
-        )
-        return
-
-    if not status:
-        await rich_edit(pm, rich_heading(lang["play_assistant_joining_title"], level=3))
-        ok = await try_join_assistant(chat_id, pm)
-        if not ok:
-            return
-        await rich_edit(
-            pm,
-            rich_heading(lang["play_assistant_joined_title"], level=3)
-            + rich_note(lang["generic_processing_note"]),
-        )
-
-    # Normalise short YouTube URL
+    # Normalise short YouTube URL before starting the search.
     if "youtu.be" in query:
         m = re.search(r"youtu\.be/([^?&]+)", query)
         if m:
             query = f"https://www.youtube.com/watch?v={m.group(1)}"
 
-    # Search YouTube
+    # Search and assistant check are independent; run them together so the
+    # user does not pay both latencies back-to-back.
+    search_task = asyncio.create_task(search_yt(query))
+    search_task.add_done_callback(
+        lambda t: None if t.cancelled() else t.exception()
+    )
     try:
-        result = await search_yt(query)
-        LOGGER.info(f"[PLAY] search ok in {chat_id}")
-    except Exception as e:
-        LOGGER.warning(f"[PLAY] search failed in {chat_id}: {e}")
-        await rich_edit(
-            pm,
-            rich_heading(lang["play_search_failed_title"], level=3)
-            + rich_note(f"<code>{rich_esc(e)}</code>"),
-        )
-        return
+        status = await is_assistant_in(chat_id)
+        LOGGER.info(f"[PLAY] assistant status in {chat_id}: {status!r}")
+
+        if status == "banned":
+            search_task.cancel()
+            await rich_edit(
+                pm,
+                rich_heading(lang["play_assistant_banned_title"], level=3)
+                + rich_note(lang["play_assistant_banned_note"]),
+            )
+            return
+
+        if not status:
+            await rich_edit(pm, rich_heading(lang["play_assistant_joining_title"], level=3))
+            ok = await try_join_assistant(chat_id, pm)
+            if not ok:
+                search_task.cancel()
+                return
+            await rich_edit(
+                pm,
+                rich_heading(lang["play_assistant_joined_title"], level=3)
+                + rich_note(lang["generic_processing_note"]),
+            )
+
+        try:
+            result = await search_task
+            LOGGER.info(f"[PLAY] search ok in {chat_id}")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            LOGGER.warning(f"[PLAY] search failed in {chat_id}: {e}")
+            await rich_edit(
+                pm,
+                rich_heading(lang["play_search_failed_title"], level=3)
+                + rich_note(f"<code>{rich_esc(e)}</code>"),
+            )
+            return
+    finally:
+        if not search_task.done():
+            search_task.cancel()
 
     # Playlist
     if isinstance(result, dict) and "playlist" in result:

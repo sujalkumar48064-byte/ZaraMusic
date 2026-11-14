@@ -52,6 +52,12 @@ INVIDIOUS_APIS = [
     if u.strip().startswith("http")
 ]
 FREE_API_FALLBACK = _env_bool("FREE_API_FALLBACK", True)
+# Hedge the free audio mirrors: start the next source before the previous one
+# finishes so one slow/dead mirror cannot dominate first-play latency.
+FREE_SOURCE_RACE     = _env_bool("FREE_SOURCE_RACE", True)
+FREE_HEDGE_DELAY     = float(os.getenv("FREE_HEDGE_DELAY", "2.5"))
+# Target audio bitrate. 96000 = current 96 kbps; 64000 = faster download.
+AUDIO_BITRATE        = int(os.getenv("AUDIO_BITRATE", "96000"))
 # batbin.me links to cookie files (space / comma / newline separated)
 COOKIES_URL = [
     u for u in os.getenv("COOKIES_URL", "").replace(",", " ").split()
