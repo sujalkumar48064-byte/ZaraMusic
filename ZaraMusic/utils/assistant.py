@@ -14,8 +14,24 @@ from richgram import rich_edit, rich_esc, rich_heading, rich_note
 
 
 async def is_assistant_in(chat_id: int):
+    # Prefer the bot client for the membership lookup: it is the bot's own
+    # control connection and does not depend on the assistant userbot being
+    # responsive at that instant.
+    me = getattr(assistant, "me", None)
+    assistant_id = getattr(me, "id", None)
+    if assistant_id:
+        try:
+            member = await asyncio.wait_for(
+                bot.get_chat_member(chat_id, assistant_id), timeout=8
+            )
+            return member.status is not None
+        except Exception as e:
+            err = str(e)
+            if "USER_BANNED" in err or "Banned" in err:
+                return "banned"
+
     try:
-        me     = await asyncio.wait_for(assistant.get_me(), timeout=5)
+        me = await asyncio.wait_for(assistant.get_me(), timeout=5)
         member = await asyncio.wait_for(
             assistant.get_chat_member(chat_id, me.id), timeout=8
         )
