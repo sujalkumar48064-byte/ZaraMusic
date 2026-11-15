@@ -346,6 +346,20 @@ async def play_song(
         f"{media_path} ({size} bytes)"
     )
 
+    # A dead assistant userbot cannot join a voice chat; fail fast instead of
+    # burning the 10s + 60s play timeouts and leaving the queue stuck.
+    if getattr(assistant, "is_connected", None) is False:
+        LOGGER.error(f"[PLAY] {chat_id}: assistant userbot is disconnected")
+        try:
+            _drop_song(chat_id, song, keep_file=True)
+        except Exception:
+            pass
+        await _fail(
+            rich_heading(lang["effects_playback_failed_title"], level=3)
+            + rich_note("Assistant is reconnecting. Please try again."),
+        )
+        return
+
     # ─────────────────────────────────────────
     # AUTO EFFECTS
     # ─────────────────────────────────────────
