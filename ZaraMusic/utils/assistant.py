@@ -15,8 +15,10 @@ from richgram import rich_edit, rich_esc, rich_heading, rich_note
 
 async def is_assistant_in(chat_id: int):
     try:
-        me     = await assistant.get_me()
-        member = await assistant.get_chat_member(chat_id, me.id)
+        me     = await asyncio.wait_for(assistant.get_me(), timeout=5)
+        member = await asyncio.wait_for(
+            assistant.get_chat_member(chat_id, me.id), timeout=8
+        )
         return member.status is not None
 
     except Exception as e:
@@ -30,14 +32,18 @@ async def try_join_assistant(chat_id: int, pm: Message) -> bool:
     invite_link = None
 
     try:
-        invite_link = await bot.export_chat_invite_link(chat_id)
+        invite_link = await asyncio.wait_for(
+            bot.export_chat_invite_link(chat_id), timeout=10
+        )
     except Exception as e:
         # Public groups can be joined without admin invite-link permission.
         try:
             chat = await bot.get_chat(chat_id)
             username = getattr(chat, "username", None)
             if username:
-                await assistant.join_chat(f"@{username}")
+                await asyncio.wait_for(
+                    assistant.join_chat(f"@{username}"), timeout=15
+                )
                 await asyncio.sleep(2)
                 return True
         except Exception:
@@ -65,7 +71,7 @@ async def try_join_assistant(chat_id: int, pm: Message) -> bool:
                 "https://t.me/joinchat/",
             )
 
-        await assistant.join_chat(invite_link)
+        await asyncio.wait_for(assistant.join_chat(invite_link), timeout=15)
         await asyncio.sleep(2)
         return True
 
@@ -78,7 +84,9 @@ async def try_join_assistant(chat_id: int, pm: Message) -> bool:
             chat = await bot.get_chat(chat_id)
             username = getattr(chat, "username", None)
             if username:
-                await assistant.join_chat(f"@{username}")
+                await asyncio.wait_for(
+                    assistant.join_chat(f"@{username}"), timeout=15
+                )
                 await asyncio.sleep(2)
                 return True
         except Exception:

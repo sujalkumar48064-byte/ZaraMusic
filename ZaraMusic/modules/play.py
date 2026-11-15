@@ -261,7 +261,11 @@ async def _process_play(message: Message, query: str, video: bool = False, chat_
         lambda t: None if t.cancelled() else t.exception()
     )
     try:
-        status = await is_assistant_in(chat_id)
+        try:
+            status = await asyncio.wait_for(is_assistant_in(chat_id), timeout=15)
+        except asyncio.TimeoutError:
+            LOGGER.warning(f"[PLAY] assistant check timed out in {chat_id}")
+            status = False
         LOGGER.info(f"[PLAY] assistant status in {chat_id}: {status!r}")
 
         if status == "banned":
@@ -275,7 +279,13 @@ async def _process_play(message: Message, query: str, video: bool = False, chat_
 
         if not status:
             await rich_edit(pm, rich_heading(lang["play_assistant_joining_title"], level=3))
-            ok = await try_join_assistant(chat_id, pm)
+            try:
+                ok = await asyncio.wait_for(
+                    try_join_assistant(chat_id, pm), timeout=25
+                )
+            except asyncio.TimeoutError:
+                LOGGER.warning(f"[PLAY] assistant join timed out in {chat_id}")
+                ok = False
             if not ok:
                 search_task.cancel()
                 return
