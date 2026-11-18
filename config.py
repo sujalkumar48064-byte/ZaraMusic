@@ -75,7 +75,7 @@ DOWNLOAD_TIMEOUT         = int(os.getenv("DOWNLOAD_TIMEOUT", "180"))
 PLAY_TIMEOUT             = int(os.getenv("PLAY_TIMEOUT", "60"))
 PLAY_JOIN_TIMEOUT        = int(os.getenv("PLAY_JOIN_TIMEOUT", "10"))
 # Short attempt for the API direct-audio URL; if it stalls, download fallback.
-API_DIRECT_TIMEOUT       = int(os.getenv("API_DIRECT_TIMEOUT", "8"))
+API_DIRECT_TIMEOUT       = int(os.getenv("API_DIRECT_TIMEOUT", "10"))
 BOT_WORKERS              = int(os.getenv("BOT_WORKERS", "32"))
 VIDEO_FPS                = int(os.getenv("VIDEO_FPS", "24"))
 
@@ -85,6 +85,10 @@ INVIDIOUS_META_TIMEOUT   = int(os.getenv("INVIDIOUS_META_TIMEOUT", "8"))
 FREE_SOURCE_TIMEOUT      = int(os.getenv("FREE_SOURCE_TIMEOUT", "60"))
 FREE_SOURCE_BUDGET       = int(os.getenv("FREE_SOURCE_BUDGET", "120"))
 YTDLP_DOWNLOAD_TIMEOUT   = int(os.getenv("YTDLP_DOWNLOAD_TIMEOUT", "90"))
+API_DOWNLOAD_TIMEOUT     = int(os.getenv("API_DOWNLOAD_TIMEOUT", "45"))
+# Hard cap for resolving audio/video; prevents a 5-minute loading hang.
+AUDIO_RESOLVE_TIMEOUT    = int(os.getenv("AUDIO_RESOLVE_TIMEOUT", "45"))
+VIDEO_RESOLVE_TIMEOUT    = int(os.getenv("VIDEO_RESOLVE_TIMEOUT", "120"))
 
 # ── NSFW Moderation API ─────────────────────────────────────────────────────
 #NSFW_API_URL = os.getenv("NSFW_API_URL", "https://ai-moderation-api-khyr.onrender.com")
