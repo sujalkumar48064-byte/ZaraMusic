@@ -443,35 +443,11 @@ async def play_song(
     if prestarted:
         media_path = api_url
     else:
-        resolve_timeout = (
-            config.VIDEO_RESOLVE_TIMEOUT if is_video
-            else config.AUDIO_RESOLVE_TIMEOUT
-        )
         try:
             if is_video:
-                media_path = await asyncio.wait_for(
-                    resolve_video_stream(url), timeout=resolve_timeout
-                )
+                media_path = await resolve_video_stream(url)
             else:
-                media_path = await asyncio.wait_for(
-                    resolve_stream(url), timeout=resolve_timeout
-                )
-
-        except asyncio.TimeoutError:
-            LOGGER.warning(
-                f"[PLAY] {chat_id}: resolve timed out after {resolve_timeout}s"
-            )
-            try:
-                _drop_song(chat_id, song)
-            except Exception:
-                pass
-
-            await _fail(
-                rich_heading(lang["download_failed_title"], level=3)
-                + rich_note("Download timed out. Please try another song."),
-            )
-            await _continue_with_next(chat_id, token, "resolve timeout")
-            return
+                media_path = await resolve_stream(url)
 
         except Exception as e:
             LOGGER.warning(f"[PLAY] {chat_id}: resolve failed: {e}")

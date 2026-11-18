@@ -189,7 +189,7 @@ async def _download_via_api(video_id: str, video: bool) -> Optional[str]:
             async with session.get(
                 f"{API_URL}/download",
                 params=params,
-                timeout=aiohttp.ClientTimeout(total=min(YT_STREAM_TIMEOUT, API_DOWNLOAD_TIMEOUT)),
+                timeout=aiohttp.ClientTimeout(total=min(YT_STREAM_TIMEOUT, 180)),
             ) as resp:
                 if resp.status != 200:
                     logger.warning(f"[api] Download failed: HTTP {resp.status}")
@@ -221,9 +221,6 @@ async def _download_via_api(video_id: str, video: bool) -> Optional[str]:
         os.replace(tmp, final)
         logger.info(f"[api] Downloaded {video_id} ({size // 1024} KB)")
         return final
-    except asyncio.CancelledError:
-        _cleanup(tmp)
-        raise
     except Exception as e:
         logger.error(f"[api] download error: {_redact(e)}")
         _cleanup(tmp)
@@ -749,10 +746,6 @@ async def _download_ytdlp(video_id: str, video: bool) -> Optional[str]:
         if proc and proc.returncode is None:
             proc.kill()
         return None
-    except asyncio.CancelledError:
-        if proc and proc.returncode is None:
-            proc.kill()
-        raise
     except Exception as e:
         logger.error(f"[yt-dlp] error: {e}")
         return None
@@ -1029,55 +1022,6 @@ async def search_yt(query: str):
     return result
 
 
-async def _search_api(query: str):
-    """Fast, relevant search from the configured API (InnerTube-backed)."""
-    if not (API_URL and API_KEY):
-        return None
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{API_URL}/search",
-                params={"q": query, "limit": 5, "api_key": API_KEY},
-                timeout=aiohttp.ClientTimeout(total=6),
-            ) as resp:
-                if resp.status != 200:
-                    logger.warning(f"[api:search] HTTP {resp.status}")
-                    return None
-                data = await resp.json(content_type=None)
-
-        items = (data or {}).get("result") or (data or {}).get("results") or []
-        if not items:
-            return None
-
-        r = items[0]
-        vid = str(r.get("id") or "").strip()
-        if not _ID_RE.match(vid):
-            vid = _extract_video_id(str(r.get("link") or r.get("url") or ""))
-        if not _ID_RE.match(vid or ""):
-            return None
-
-        title = r.get("title") or "Unknown"
-        thumb = r.get("thumbnail") or ""
-        thumbs = r.get("thumbnails") or []
-        if not thumb and thumbs:
-            thumb = (thumbs[0] or {}).get("url") or ""
-        dur = r.get("duration") or "0:00"
-        try:
-            secs = time_to_seconds(dur)
-        except Exception:
-            secs = 0
-        logger.info(f"[api:search] {query!r} -> {vid} ({str(title)[:60]!r})")
-        return (
-            f"https://www.youtube.com/watch?v={vid}",
-            title,
-            sec_to_iso(secs),
-            str(thumb).split("?")[0],
-        )
-    except Exception as e:
-        logger.warning(f"[api:search] {_redact(e)}")
-        return None
-
-
 async def _search_yt_uncached(query: str):
     """Search YouTube for a video or playlist. Returns metadata tuple or playlist dict."""
 
@@ -1133,10 +1077,6 @@ async def _search_yt_uncached(query: str):
             return meta
 
     # ── Single video search ───────────────────────────────────────────────────
-    api_result = await _search_api(query)
-    if api_result:
-        return api_result
-
     try:
         search  = VideosSearch(query, limit=1)
         results = await asyncio.wait_for(search.next(), timeout=SEARCH_TIMEOUT)
