@@ -33,7 +33,7 @@ services:
         value: duifioookn2
 
       - key: API_URL
-        value: https://api.riteshyt.in
+        sync: false
 
       - key: API_KEY
         sync: false

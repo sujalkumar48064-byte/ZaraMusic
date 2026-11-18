@@ -74,8 +74,6 @@ SEARCH_TIMEOUT           = int(os.getenv("SEARCH_TIMEOUT", "12"))
 DOWNLOAD_TIMEOUT         = int(os.getenv("DOWNLOAD_TIMEOUT", "180"))
 PLAY_TIMEOUT             = int(os.getenv("PLAY_TIMEOUT", "60"))
 PLAY_JOIN_TIMEOUT        = int(os.getenv("PLAY_JOIN_TIMEOUT", "10"))
-# Short attempt for the API direct-audio URL; if it stalls, download fallback.
-API_DIRECT_TIMEOUT       = int(os.getenv("API_DIRECT_TIMEOUT", "8"))
 BOT_WORKERS              = int(os.getenv("BOT_WORKERS", "32"))
 VIDEO_FPS                = int(os.getenv("VIDEO_FPS", "24"))
 

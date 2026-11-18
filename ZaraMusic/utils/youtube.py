@@ -86,16 +86,6 @@ _ID_RE = re.compile(r"^[A-Za-z0-9_-]{3,64}$")
 _cookie_warned = False
 
 
-def api_audio_stream_url(link: str) -> Optional[str]:
-    """Direct audio URL for music bots; no full download before playback."""
-    if not (API_URL and API_KEY):
-        return None
-    video_id = _extract_video_id(str(link or ""))
-    if not _ID_RE.match(video_id or ""):
-        return None
-    return f"{API_URL}/downloads/{API_KEY}/youtube.com/{video_id}.mp3"
-
-
 def _get_cookie_file() -> Optional[str]:
     """Random cookie file from COOKIES_DIR, or None when there is none."""
     global _cookie_warned
@@ -162,33 +152,17 @@ def _cached(video_id: str, video: bool) -> Optional[str]:
     return None
 
 
-def _redact(text) -> str:
-    text = str(text)
-    if API_KEY:
-        text = text.replace(API_KEY, "***")
-    return text[:220]
-
-
 async def _download_via_api(video_id: str, video: bool) -> Optional[str]:
-    """Download through the configured API (Ritesh/Alone-style compatible)."""
+    """Download through API_URL/download?url=<id>&type=audio|video&api_key=..."""
     if not (API_URL and API_KEY):
         return None
     path = os.path.join(DOWNLOAD_DIR, f"{video_id}.{'mp4' if video else 'mp3'}")
     tmp = path + ".part"
-    params = {
-        "query": video_id,
-        "url": video_id,
-        "dl_type": "video" if video else "audio",
-        "type": "video" if video else "audio",
-        "api_key": API_KEY,
-    }
-    if video:
-        params["quality"] = "720"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
                 f"{API_URL}/download",
-                params=params,
+                params={"url": video_id, "type": "video" if video else "audio", "api_key": API_KEY},
                 timeout=aiohttp.ClientTimeout(total=min(YT_STREAM_TIMEOUT, 180)),
             ) as resp:
                 if resp.status != 200:
@@ -200,29 +174,18 @@ async def _download_via_api(video_id: str, video: bool) -> Optional[str]:
 
         size = os.path.getsize(tmp) if os.path.exists(tmp) else 0
         bad = size == 0
-        head = b""
-        if not bad:
+        if not bad and size < 4096:  # tiny file: probably a JSON/HTML error body
             with open(tmp, "rb") as fh:
-                head = fh.read(12)
-            # tiny file: probably a JSON/HTML error body
-            if size < 4096:
-                bad = head[:1] in (b"{", b"<", b"[")
+                bad = fh.read(1) in (b"{", b"<", b"[")
         if bad:
             logger.warning("[api] No media returned (check API_URL / API_KEY)")
             _cleanup(tmp)
             return None
-
-        # The API may label an M4A file as audio/mpeg. Keep the real container
-        # extension so ffmpeg/PyTgCalls detect it correctly.
-        final = path
-        if not video and head[4:8] == b"ftyp":
-            final = path[:-4] + ".m4a"
-
-        os.replace(tmp, final)
+        os.replace(tmp, path)
         logger.info(f"[api] Downloaded {video_id} ({size // 1024} KB)")
-        return final
+        return path
     except Exception as e:
-        logger.error(f"[api] download error: {_redact(e)}")
+        logger.error(f"[api] download error: {e}")
         _cleanup(tmp)
         return None
 
@@ -758,21 +721,7 @@ async def _download_uncached(video_id: str, video: bool) -> Optional[str]:
     api_set = bool(API_URL and API_KEY)
     cookie_ready = bool(USE_COOKIES and _get_cookie_file())
 
-    if not cookie_ready:
-        # Audio already tried the API's direct stream in player.py. If that
-        # failed, the free hedged mirrors are usually faster than a full API
-        # download, so use them before falling back to the API file download.
-        if not video:
-            got = await _download_via_free(video_id, video)
-            if got:
-                return got
-            if api_set:
-                got = await _download_via_api(video_id, video)
-                if got:
-                    return got
-            logger.info(f"[yt] audio fallbacks failed, trying yt-dlp for {video_id}")
-            return await _download_ytdlp(video_id, video)
-
+    if not cookie_ready:                       # free/API first (fast start)
         if api_set:
             got = await _download_via_api(video_id, video)
             if got:
