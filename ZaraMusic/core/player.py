@@ -64,6 +64,7 @@ from richgram import (
 )
 
 from ZaraMusic.utils.youtube import (
+    api_audio_stream_url,
     resolve_stream,
     resolve_video_stream,
 )
@@ -264,6 +265,121 @@ async def _ensure_vc(chat_id: int, status_message=None) -> bool:
 
 
 # ─────────────────────────────────────────────
+# FAST API DIRECT STREAM
+# ─────────────────────────────────────────────
+
+_api_direct_fails = 0
+_api_direct_fail_until = 0.0
+
+
+def _safe_error(exc) -> str:
+    text = str(exc)
+    key = getattr(config, "API_KEY", "")
+    if key:
+        text = text.replace(key, "***")
+    return text[:220]
+
+
+async def _try_api_direct(
+    chat_id: int,
+    media_url: str,
+    token: int,
+    status_message,
+    lang: dict,
+) -> bool:
+    """Try the API's direct audio URL once. Falls back to normal download."""
+    global _api_direct_fails, _api_direct_fail_until
+
+    if not media_url or time.time() < _api_direct_fail_until:
+        return False
+    if _play_tokens.get(chat_id) != token:
+        return False
+
+    for attempt in range(2):
+        if _play_tokens.get(chat_id) != token:
+            return False
+
+        try:
+            stream = MediaStream(
+                media_url,
+                audio_parameters=AudioQuality.HIGH,
+                video_flags=MediaStream.Flags.IGNORE,
+            )
+            started = time.time()
+            await asyncio.wait_for(
+                call_py.play(chat_id, stream),
+                timeout=config.API_DIRECT_TIMEOUT,
+            )
+            LOGGER.info(
+                f"[PLAY] {chat_id}: API direct play returned in "
+                f"{time.time() - started:.1f}s"
+            )
+
+            for _ in range(12):
+                if _play_tokens.get(chat_id) != token:
+                    return False
+                try:
+                    calls = await asyncio.wait_for(call_py.calls, timeout=3)
+                    active = calls.get(chat_id)
+                    if active is not None and active.capture == Call.Status.ACTIVE:
+                        LOGGER.info(
+                            f"[PLAY] {chat_id}: API direct active in "
+                            f"{time.time() - started:.1f}s"
+                        )
+                        _api_direct_fails = 0
+                        return True
+                except Exception as e:
+                    LOGGER.warning(
+                        f"[PLAY] {chat_id}: API direct check failed: "
+                        f"{_safe_error(e)}"
+                    )
+                await asyncio.sleep(0.4)
+
+            LOGGER.warning(
+                f"[PLAY] {chat_id}: API direct stayed inactive; using download"
+            )
+
+        except NoActiveGroupCall:
+            if attempt == 0:
+                LOGGER.info(f"[VC] API direct: creating VC in {chat_id}")
+                if await _ensure_vc(chat_id, status_message):
+                    continue
+            return False
+
+        except asyncio.TimeoutError:
+            LOGGER.warning(
+                f"[PLAY] {chat_id}: API direct timed out after "
+                f"{config.API_DIRECT_TIMEOUT}s"
+            )
+
+        except Exception as e:
+            LOGGER.warning(
+                f"[PLAY] {chat_id}: API direct failed: {_safe_error(e)}"
+            )
+
+        try:
+            from ZaraMusic.core.call import mark_leaving
+            mark_leaving(chat_id)
+        except Exception:
+            pass
+        try:
+            await asyncio.wait_for(call_py.leave_call(chat_id), timeout=8)
+        except Exception:
+            pass
+
+        _api_direct_fails += 1
+        if _api_direct_fails >= 2:
+            _api_direct_fail_until = time.time() + 300
+            _api_direct_fails = 0
+            LOGGER.warning(
+                f"[PLAY] API direct paused for 5 minutes after repeated failures"
+            )
+        return False
+
+    return False
+
+
+# ─────────────────────────────────────────────
 # MAIN PLAY FUNCTION
 # ─────────────────────────────────────────────
 
@@ -310,26 +426,42 @@ async def play_song(
     # ─────────────────────────────────────────
 
     is_video = song.get("video", False)
+    prestarted = False
+    media_path = None
+    api_url = None
 
-    try:
-        if is_video:
-            media_path = await resolve_video_stream(url)
-        else:
-            media_path = await resolve_stream(url)
+    # The API's musicbot redirect is much faster than downloading the whole
+    # file first. Validate it quickly; on any problem use the normal pipeline.
+    if not is_video and getattr(assistant, "is_connected", None) is not False:
+        api_url = api_audio_stream_url(url)
+        if api_url:
+            LOGGER.info(f"[PLAY] {chat_id}: trying API direct stream")
+            prestarted = await _try_api_direct(
+                chat_id, api_url, token, message, lang
+            )
 
-    except Exception as e:
-        LOGGER.warning(f"[PLAY] {chat_id}: resolve failed: {e}")
+    if prestarted:
+        media_path = api_url
+    else:
         try:
-            _drop_song(chat_id, song)
-        except Exception:
-            pass
+            if is_video:
+                media_path = await resolve_video_stream(url)
+            else:
+                media_path = await resolve_stream(url)
 
-        await _fail(
-            rich_heading(lang["download_failed_title"], level=3)
-            + rich_note(f"<code>{rich_esc(e)}</code>"),
-        )
-        await _continue_with_next(chat_id, token, "resolve failed")
-        return
+        except Exception as e:
+            LOGGER.warning(f"[PLAY] {chat_id}: resolve failed: {e}")
+            try:
+                _drop_song(chat_id, song)
+            except Exception:
+                pass
+
+            await _fail(
+                rich_heading(lang["download_failed_title"], level=3)
+                + rich_note(f"<code>{rich_esc(e)}</code>"),
+            )
+            await _continue_with_next(chat_id, token, "resolve failed")
+            return
 
     song["file_path"] = media_path
 
@@ -337,13 +469,16 @@ async def play_song(
         delete_file(media_path)
         return
 
-    try:
-        size = os.path.getsize(media_path)
-    except OSError:
-        size = 0
+    if prestarted:
+        size = -1
+    else:
+        try:
+            size = os.path.getsize(media_path)
+        except OSError:
+            size = 0
     LOGGER.info(
         f"[PLAY] {chat_id}: resolved {'video' if is_video else 'audio'} "
-        f"{media_path} ({size} bytes)"
+        f"{'API direct URL' if prestarted else media_path} ({size} bytes)"
     )
 
     # A dead assistant userbot cannot join a voice chat; fail fast instead of
@@ -364,7 +499,7 @@ async def play_song(
     # AUTO EFFECTS
     # ─────────────────────────────────────────
 
-    if not is_video:
+    if not is_video and not prestarted:
         try:
             from ZaraMusic.modules.effects import maybe_apply_effects
             media_path = await maybe_apply_effects(chat_id, media_path)
@@ -382,7 +517,7 @@ async def play_song(
     # PLAY STREAM
     # ─────────────────────────────────────────
 
-    played = False
+    played = bool(prestarted)
 
     if _play_tokens.get(chat_id) != token:
         delete_file(media_path)
@@ -391,7 +526,7 @@ async def play_song(
     # Try joining the existing group call first. Creating a group call while
     # one is already active makes Telegram close the old call, which used to
     # trigger a stream-end/call-left loop and wipe the queue.
-    for attempt in range(2):
+    for attempt in (() if prestarted else range(2)):
 
         if _play_tokens.get(chat_id) != token:
             delete_file(media_path)
@@ -571,8 +706,8 @@ async def play_song(
 
     # play() returning only means the join request finished. Confirm the
     # stream is actually ACTIVE before telling the user it is playing.
-    confirmed = False
-    for _ in range(6):
+    confirmed = bool(prestarted)
+    for _ in (() if prestarted else range(6)):
         try:
             active_calls = await asyncio.wait_for(call_py.calls, timeout=5)
             active = active_calls.get(chat_id)
