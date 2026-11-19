@@ -302,7 +302,7 @@ async def _try_api_direct(
 
     if warm_task is not None:
         try:
-            await asyncio.wait_for(asyncio.shield(warm_task), timeout=1.5)
+            await asyncio.wait_for(asyncio.shield(warm_task), timeout=1.0)
         except Exception:
             pass
 
@@ -408,6 +408,18 @@ async def play_song(
 
     token = bump_play_token(chat_id)
 
+    is_video = song.get("video", False)
+    prestarted = False
+    media_path = None
+    api_url = None
+    warm_task = None
+
+    # Start warming the API URL while the loading card is being edited.
+    if not is_video and getattr(assistant, "is_connected", None) is not False:
+        api_url = api_audio_stream_url(url)
+        if api_url:
+            warm_task = asyncio.create_task(warm_audio_stream_url(api_url))
+
     loading_text = (
         rich_heading(lang["loading_title"], level=3)
         + rich_kv_table([(lang["kv_song"], rich_esc(short(song['title'])))])
@@ -435,29 +447,29 @@ async def play_song(
     # RESOLVE STREAM
     # ─────────────────────────────────────────
 
-    is_video = song.get("video", False)
-    prestarted = False
-    media_path = None
-    api_url = None
-    warm_task = None
-
     # Fast path: stream the API audio URL directly instead of downloading the
     # whole file first. Effects need a local file, so they keep the old path.
-    if not is_video and getattr(assistant, "is_connected", None) is not False:
+    if api_url:
         try:
             from ZaraMusic.modules.effects import is_effects_on
             effects_on = is_effects_on(chat_id)
         except Exception:
             effects_on = False
 
-        if not effects_on:
-            api_url = api_audio_stream_url(url)
-            if api_url:
-                LOGGER.info(f"[PLAY] {chat_id}: trying direct audio stream")
-                warm_task = asyncio.create_task(warm_audio_stream_url(api_url))
-                prestarted = await _try_api_direct(
-                    chat_id, api_url, token, message, warm_task
-                )
+        if effects_on:
+            api_url = None
+            if warm_task is not None and not warm_task.done():
+                warm_task.cancel()
+                try:
+                    await warm_task
+                except Exception:
+                    pass
+                warm_task = None
+        else:
+            LOGGER.info(f"[PLAY] {chat_id}: trying direct audio stream")
+            prestarted = await _try_api_direct(
+                chat_id, api_url, token, message, warm_task
+            )
 
     if prestarted:
         media_path = api_url
