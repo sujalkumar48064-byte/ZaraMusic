@@ -90,14 +90,23 @@ _STREAM_UA = (
 )
 
 
-def api_audio_stream_url(link: str) -> Optional[str]:
-    """Direct API audio URL (no full download before playback)."""
+def _api_stream_url(link: str, ext: str) -> Optional[str]:
     if not (API_URL and API_KEY):
         return None
     video_id = _extract_video_id(str(link or ""))
     if not _ID_RE.match(video_id or ""):
         return None
-    return f"{API_URL}/downloads/{API_KEY}/youtube.com/{video_id}.mp3"
+    return f"{API_URL}/downloads/{API_KEY}/youtube.com/{video_id}.{ext}"
+
+
+def api_audio_stream_url(link: str) -> Optional[str]:
+    """Direct API audio URL (no full download before playback)."""
+    return _api_stream_url(link, "mp3")
+
+
+def api_video_stream_url(link: str) -> Optional[str]:
+    """Direct API video URL (no full download before playback)."""
+    return _api_stream_url(link, "mp4")
 
 
 async def warm_audio_stream_url(url: str) -> None:

@@ -65,6 +65,7 @@ from richgram import (
 
 from ZaraMusic.utils.youtube import (
     api_audio_stream_url,
+    api_video_stream_url,
     resolve_stream,
     resolve_video_stream,
     warm_audio_stream_url,
@@ -291,6 +292,7 @@ async def _try_api_direct(
     token: int,
     status_message,
     warm_task=None,
+    video: bool = False,
 ) -> bool:
     """Start the API audio URL directly; fall back to the normal download."""
     global _api_direct_fails, _api_direct_fail_until
@@ -311,12 +313,20 @@ async def _try_api_direct(
             return False
 
         try:
-            stream = MediaStream(
-                media_url,
-                audio_parameters=AudioQuality.HIGH,
-                video_flags=MediaStream.Flags.IGNORE,
-                headers={"User-Agent": _STREAM_UA},
-            )
+            if video:
+                stream = MediaStream(
+                    media_url,
+                    audio_parameters=AudioQuality.HIGH,
+                    video_parameters=VideoQuality.SD_480p,
+                    headers={"User-Agent": _STREAM_UA},
+                )
+            else:
+                stream = MediaStream(
+                    media_url,
+                    audio_parameters=AudioQuality.HIGH,
+                    video_flags=MediaStream.Flags.IGNORE,
+                    headers={"User-Agent": _STREAM_UA},
+                )
             started = time.time()
             await asyncio.wait_for(
                 call_py.play(chat_id, stream),
@@ -415,8 +425,10 @@ async def play_song(
     warm_task = None
 
     # Start warming the API URL while the loading card is being edited.
-    if not is_video and getattr(assistant, "is_connected", None) is not False:
-        api_url = api_audio_stream_url(url)
+    if getattr(assistant, "is_connected", None) is not False:
+        api_url = (
+            api_video_stream_url(url) if is_video else api_audio_stream_url(url)
+        )
         if api_url:
             warm_task = asyncio.create_task(warm_audio_stream_url(api_url))
 
@@ -447,14 +459,18 @@ async def play_song(
     # RESOLVE STREAM
     # ─────────────────────────────────────────
 
-    # Fast path: stream the API audio URL directly instead of downloading the
-    # whole file first. Effects need a local file, so they keep the old path.
+    # Fast path: stream the API media URL directly instead of downloading the
+    # whole file first. Audio effects need a local file, so they keep the old
+    # path; video has no effects.
     if api_url:
-        try:
-            from ZaraMusic.modules.effects import is_effects_on
-            effects_on = is_effects_on(chat_id)
-        except Exception:
+        if is_video:
             effects_on = False
+        else:
+            try:
+                from ZaraMusic.modules.effects import is_effects_on
+                effects_on = is_effects_on(chat_id)
+            except Exception:
+                effects_on = False
 
         if effects_on:
             api_url = None
@@ -466,9 +482,12 @@ async def play_song(
                     pass
                 warm_task = None
         else:
-            LOGGER.info(f"[PLAY] {chat_id}: trying direct audio stream")
+            LOGGER.info(
+                f"[PLAY] {chat_id}: trying direct "
+                f"{'video' if is_video else 'audio'} stream"
+            )
             prestarted = await _try_api_direct(
-                chat_id, api_url, token, message, warm_task
+                chat_id, api_url, token, message, warm_task, video=is_video
             )
 
     if prestarted:
@@ -516,7 +535,7 @@ async def play_song(
             size = 0
     LOGGER.info(
         f"[PLAY] {chat_id}: resolved {'video' if is_video else 'audio'} "
-        f"{'direct audio URL' if prestarted else media_path} ({size} bytes)"
+        f"{'direct stream URL' if prestarted else media_path} ({size} bytes)"
     )
 
     # A dead assistant userbot cannot join a voice chat; fail fast instead of
