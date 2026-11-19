@@ -84,6 +84,36 @@ def time_to_seconds(time) -> int:
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{3,64}$")
 _cookie_warned = False
+_STREAM_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
+
+
+def api_audio_stream_url(link: str) -> Optional[str]:
+    """Direct API audio URL (no full download before playback)."""
+    if not (API_URL and API_KEY):
+        return None
+    video_id = _extract_video_id(str(link or ""))
+    if not _ID_RE.match(video_id or ""):
+        return None
+    return f"{API_URL}/downloads/{API_KEY}/youtube.com/{video_id}.mp3"
+
+
+async def warm_audio_stream_url(url: str) -> None:
+    """Open the API/CDN connection early so ffmpeg's first byte is fast."""
+    if not url:
+        return
+    try:
+        timeout = aiohttp.ClientTimeout(total=8, sock_read=5)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(
+                url,
+                headers={"Range": "bytes=0-1", "User-Agent": _STREAM_UA},
+            ) as resp:
+                await resp.read(2)
+    except Exception:
+        pass
 
 
 def _get_cookie_file() -> Optional[str]:
